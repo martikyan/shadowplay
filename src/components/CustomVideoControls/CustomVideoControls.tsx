@@ -9,6 +9,14 @@ type CustomVideoControlsProps = {
 };
 
 function CustomVideoControls(props: CustomVideoControlsProps) {
+        // Remove a mark by time and type
+        const removeMark = (time: number, type: 'start' | 'end') => {
+            if (type === 'start') {
+                setMarkedCues(prev => prev.filter(t => t !== time));
+            } else {
+                setEndMarks(prev => prev.filter(t => t !== time));
+            }
+        };
     // Helper to check if a text input is focused (move to top-level for all handlers)
 
     // J/L: jump backward/forward by one subtitle cue
@@ -92,16 +100,17 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         if (!video) return;
         let lastJumpedEnd: number | null = null;
         const EPSILON = 1.0;
+        const REPEAT_OFFSET = 0.05; // 50ms after mark
         const onTimeUpdate = () => {
             const currentTime = video.currentTime;
-            // Find if we're at or just after an end mark
-            const hitEnd = endMarks.find((end: number) => currentTime > end - EPSILON && currentTime < end + EPSILON);
+            // Only jump if currentTime is >= end (not just > end - EPSILON)
+            const hitEnd = endMarks.find((end: number) => currentTime >= end && currentTime < end + EPSILON);
             if (hitEnd !== undefined && hitEnd !== lastJumpedEnd) {
                 // Find previous start mark
                 const prevMark = [...markedCues].reverse().find((t: number) => t < hitEnd);
                 if (prevMark !== undefined) {
                     lastJumpedEnd = hitEnd;
-                    video.currentTime = prevMark;
+                    video.currentTime = prevMark + REPEAT_OFFSET;
                 }
             }
             // Reset lastJumpedEnd if we move away
@@ -250,15 +259,16 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         const markCue = (e: KeyboardEvent) => {
             if (e.code !== 'KeyW') return;
             e.preventDefault();
-            // Always mark at the beginning of the current subtitle sentence
-            const cueStart = getCurrentCueStart(video.currentTime);
-            if (cueStart === null) return;
+            // Mark at the current video time (ms precision)
+            const currentTime = Number(video.currentTime.toFixed(3));
             setMarkedCues((prev: number[]) => {
-                if (prev.includes(cueStart)) {
-                    // Unmark if already marked
-                    return prev.filter((t: number) => t !== cueStart);
+                // Use a small epsilon to check for near-duplicates
+                const EPS = 0.0005;
+                if (prev.some(t => Math.abs(t - currentTime) < EPS)) {
+                    // Unmark if already marked (within EPS)
+                    return prev.filter((t: number) => Math.abs(t - currentTime) >= EPS);
                 } else {
-                    return [...prev, cueStart].sort((a, b) => a - b);
+                    return [...prev, currentTime].sort((a, b) => a - b);
                 }
             });
         };
@@ -267,16 +277,18 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         const markEndCue = (e: KeyboardEvent) => {
             if (e.code !== 'KeyE') return;
             e.preventDefault();
-            // Mark at the current video time (not subtitle end)
-            const currentTime = video.currentTime;
-            setEndMarks((prev: number[]) => {
-                if (prev.includes(currentTime)) {
-                    // Unmark if already marked
-                    return prev.filter((t: number) => t !== currentTime);
-                } else {
-                    return [...prev, currentTime].sort((a, b) => a - b);
-                }
-            });
+        // Mark at the current video time (not subtitle end), with ms precision
+        const currentTime = Number(video.currentTime.toFixed(3));
+        setEndMarks((prev: number[]) => {
+            // Use a small epsilon to check for near-duplicates
+            const EPS = 0.0005;
+            if (prev.some(t => Math.abs(t - currentTime) < EPS)) {
+                // Unmark if already marked (within EPS)
+                return prev.filter((t: number) => Math.abs(t - currentTime) >= EPS);
+            } else {
+                return [...prev, currentTime].sort((a, b) => a - b);
+            }
+        });
         };
 
         // Remove closest future mark (regular or end) within 1 minute with 'KeyR'
@@ -303,13 +315,13 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             }
             if (!closest) return;
             if (closest.type === 'regular') {
-                setMarkedCues(prev => prev.filter(t => t !== closest!.time));
+        const EPSILON = 0.09; // 90ms
             } else {
                 setEndMarks(prev => prev.filter(t => t !== closest!.time));
             }
         };
 
-        // ArrowRight/ArrowLeft: jump to next/prev marked cue (always to the beginning of the sentence)
+        // ArrowRight/ArrowLeft: always jump 10 seconds forward/backward
         const adjustVideoTime = (e: KeyboardEvent) => {
             const FORWARD_KEY = 'ArrowRight';
             const BACKWARD_KEY = 'ArrowLeft';
@@ -317,82 +329,31 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                 return;
             }
             e.preventDefault();
-            const cues = getCues();
+            if (!video) return;
             const currentTime = video.currentTime;
-            // Helper to get the start of the sentence for a mark
-            function getSentenceStart(time: number): number {
-                const cue = cues.find(c => c.startTime === time);
-                return cue ? cue.startTime : time;
-            }
-            // Helper to get the previous start mark before a given time
-            function getPrevMark(time: number): number | undefined {
-                return [...markedCues].reverse().find((t: number) => t < time);
-            }
-            // Helper to get the next start mark after a given time
-            function getNextMark(time: number): number | undefined {
-                return markedCues.find((t: number) => t > time);
-            }
-            // If at or very near an end mark, jump to previous start mark (for both directions)
-            const EPSILON = 1.0;
-            let atEndMark = false;
-            for (const end of endMarks) {
-                const diff = currentTime - end;
-                if (currentTime > end - EPSILON && currentTime < end + EPSILON) {
-                    atEndMark = true;
-                    break;
-                }
-            }
-            if (atEndMark && markedCues.length > 0) {
-                const prevMark = getPrevMark(currentTime);
-                if (prevMark !== undefined) {
-                    video.currentTime = getSentenceStart(prevMark);
-                    displayVideoTime();
-                    return;
-                }
-            }
-            const FIVE_MINUTES = 300;
             if (e.code === FORWARD_KEY) {
-                if (markedCues.length > 0) {
-                    // Find the next marked cue after currentTime
-                    const nextCue = getNextMark(currentTime);
-                    if (nextCue !== undefined) {
-                        if (nextCue - currentTime > FIVE_MINUTES) {
-                            video.currentTime = Math.min(video.duration, currentTime + 10);
-                        } else {
-                            video.currentTime = getSentenceStart(nextCue);
-                        }
-                    } else {
-                        // No mark in the future, go forward by 10 seconds
-                        video.currentTime = Math.min(video.duration, currentTime + 10);
-                    }
-                } else {
-                    // No marks at all, always jump by 10 seconds
-                    video.currentTime = Math.min(video.duration, currentTime + 10);
-                }
+                video.currentTime = Math.min(video.duration, currentTime + 10);
             } else if (e.code === BACKWARD_KEY) {
-                if (markedCues.length > 0) {
-                    // If within 2 seconds after a mark, go to previous mark
-                    const prevCue = [...markedCues].reverse().find((t: number) => t < currentTime - 2);
-                    if (prevCue !== undefined) {
-                        if (currentTime - prevCue > FIVE_MINUTES) {
-                            video.currentTime = Math.max(0, currentTime - 10);
-                        } else {
-                            video.currentTime = getSentenceStart(prevCue);
-                        }
-                    } else {
-                        // If within 2 seconds of a mark, go to that mark
-                        const closeMark = [...markedCues].reverse().find((t: number) => t < currentTime && currentTime - t <= 2);
-                        if (closeMark !== undefined) {
-                            video.currentTime = getSentenceStart(closeMark);
-                        } else {
-                            // No mark in the past, go backward by 10 seconds
-                            video.currentTime = Math.max(0, currentTime - 10);
-                        }
-                    }
-                } else {
-                    // No marks at all, always jump by 10 seconds
-                    video.currentTime = Math.max(0, currentTime - 10);
-                }
+                video.currentTime = Math.max(0, currentTime - 10);
+            }
+            displayVideoTime();
+        };
+
+        // U/O: jump 0.5 seconds backward/forward
+        const preciseJump = (e: KeyboardEvent) => {
+            const PRECISE_BACKWARD = 'KeyU';
+            const PRECISE_FORWARD = 'KeyO';
+            if (e.code !== PRECISE_BACKWARD && e.code !== PRECISE_FORWARD) {
+                return;
+            }
+            if (isTextInputFocused()) return;
+            e.preventDefault();
+            if (!video) return;
+            const currentTime = video.currentTime;
+            if (e.code === PRECISE_FORWARD) {
+                video.currentTime = Math.min(video.duration, currentTime + 0.5);
+            } else if (e.code === PRECISE_BACKWARD) {
+                video.currentTime = Math.max(0, currentTime - 0.5);
             }
             displayVideoTime();
         };
@@ -431,12 +392,14 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         document.addEventListener('keydown', markEndCueWrapped);
         document.addEventListener('keydown', removeClosestFutureMarkWrapped);
         document.addEventListener('keydown', adjustVideoTimeWrapped);
+        document.addEventListener('keydown', preciseJump);
         document.addEventListener('keydown', jumpBySubtitle);
         return () => {
             document.removeEventListener('keydown', markCueWrapped);
             document.removeEventListener('keydown', markEndCueWrapped);
             document.removeEventListener('keydown', removeClosestFutureMarkWrapped);
             document.removeEventListener('keydown', adjustVideoTimeWrapped);
+            document.removeEventListener('keydown', preciseJump);
             document.removeEventListener('keydown', jumpBySubtitle);
         };
     }, [video, markedCues, endMarks]);
@@ -487,41 +450,38 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             }
         }
 
+        // Combine and sort all marks
+        const allMarks = [
+            ...markedCues.map(t => ({ time: t, type: 'start' as const })),
+            ...endMarks.map(t => ({ time: t, type: 'end' as const })),
+        ].sort((a, b) => a.time - b.time);
+
+        // Handler for clicking a mark (only start marks are clickable)
+        const goToMark = (time: number) => {
+            if (video) {
+                video.currentTime = time;
+            }
+        };
+
         return (
             <div className="CustomVideoControls" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 10, pointerEvents: 'none', userSelect: 'none' }}>
                 {/* Timeline */}
                 <div style={{ position: 'relative', height: 32, margin: '0 32px', background: 'rgba(0,0,0,0.3)', borderRadius: 8, display: 'flex', alignItems: 'center' }}>
-                    {/* Start marks */}
-                    {markedCues.map((cue, idx) => (
-                        <div key={'start-' + cue}
+                    {allMarks.map((mark, idx) => (
+                        <div
+                            key={mark.type + '-' + mark.time}
                             style={{
                                 position: 'absolute',
-                                left: `${(cue / duration) * 100}%`,
+                                left: `${(mark.time / duration) * 100}%`,
                                 top: -6,
                                 bottom: -6,
                                 width: 14,
-                                background: 'red',
+                                background: mark.type === 'start' ? 'red' : 'blue',
                                 borderRadius: 7,
                                 border: '2px solid #fff',
-                                boxShadow: '0 0 16px 6px rgba(255,0,0,0.7), 0 0 2px 2px #fff',
-                                zIndex: 2,
-                                transform: 'translateX(-7px)'
-                            }}
-                        />
-                    ))}
-                    {/* End marks */}
-                    {endMarks.map((cue, idx) => (
-                        <div key={'end-' + cue}
-                            style={{
-                                position: 'absolute',
-                                left: `${(cue / duration) * 100}%`,
-                                top: -6,
-                                bottom: -6,
-                                width: 14,
-                                background: 'blue',
-                                borderRadius: 7,
-                                border: '2px solid #fff',
-                                boxShadow: '0 0 16px 6px rgba(0,0,255,0.7), 0 0 2px 2px #fff',
+                                boxShadow: mark.type === 'start'
+                                    ? '0 0 16px 6px rgba(255,0,0,0.7), 0 0 2px 2px #fff'
+                                    : '0 0 16px 6px rgba(0,0,255,0.7), 0 0 2px 2px #fff',
                                 zIndex: 2,
                                 transform: 'translateX(-7px)'
                             }}
@@ -559,6 +519,154 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                             textShadow: idx === 2 ? '0 2px 8px #000, 0 0 8px #fff' : '0 1px 2px #000'
                         }}>
                             {idx === 2 ? '▶ ' : ''}{text}
+                        </div>
+                    ))}
+                </div>
+                {/* Marks panel with mark buttons */}
+                <div
+                    style={{
+                        position: 'absolute',
+                        top: 16,
+                        right: 0,
+                        width: 210,
+                        minHeight: 120,
+                        maxHeight: 340,
+                        overflowY: 'auto',
+                        background: 'rgba(30,30,40,0.97)',
+                        borderRadius: '12px 0 0 12px',
+                        boxShadow: '0 2px 16px 2px rgba(0,0,0,0.25)',
+                        padding: '16px 10px 16px 18px',
+                        zIndex: 20,
+                        pointerEvents: 'auto',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 8,
+                        fontFamily: 'inherit',
+                    }}
+                >
+                    <div style={{ display: 'flex', alignItems: 'center', marginBottom: 6, gap: 8 }}>
+                        <span style={{ fontWeight: 'bold', color: '#fff', fontSize: 16, letterSpacing: 1 }}>Marks</span>
+                        <button
+                            onClick={() => {
+                                if (!video) return;
+                                const currentTime = Number(video.currentTime.toFixed(3));
+                                setMarkedCues((prev: number[]) => {
+                                    const EPS = 0.0005;
+                                    if (prev.some(t => Math.abs(t - currentTime) < EPS)) {
+                                        // Unmark if already marked (within EPS)
+                                        return prev.filter((t: number) => Math.abs(t - currentTime) >= EPS);
+                                    } else {
+                                        return [...prev, currentTime].sort((a, b) => a - b);
+                                    }
+                                });
+                            }}
+                            style={{
+                                background: 'linear-gradient(90deg, #ff4d4d 0%, #ffb3b3 100%)',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: 5,
+                                padding: '4px 10px',
+                                fontWeight: 600,
+                                fontSize: 14,
+                                cursor: 'pointer',
+                                boxShadow: '0 1px 4px 0 rgba(255,0,0,0.10)',
+                                marginLeft: 4
+                            }}
+                            title="Set/unset regular mark at current time (W)"
+                        >
+                            ● Mark
+                        </button>
+                        <button
+                            onClick={() => {
+                                if (!video) return;
+                                const currentTime = Number(video.currentTime.toFixed(3));
+                                setEndMarks((prev: number[]) => {
+                                    const EPS = 0.0005;
+                                    if (prev.some(t => Math.abs(t - currentTime) < EPS)) {
+                                        // Unmark if already marked (within EPS)
+                                        return prev.filter((t: number) => Math.abs(t - currentTime) >= EPS);
+                                    } else {
+                                        return [...prev, currentTime].sort((a, b) => a - b);
+                                    }
+                                });
+                            }}
+                            style={{
+                                background: 'linear-gradient(90deg, #4d6dff 0%, #b3c6ff 100%)',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: 5,
+                                padding: '4px 10px',
+                                fontWeight: 600,
+                                fontSize: 14,
+                                cursor: 'pointer',
+                                boxShadow: '0 1px 4px 0 rgba(0,0,255,0.10)',
+                                marginLeft: 2
+                            }}
+                            title="Set/unset end mark at current time (E)"
+                        >
+                            ■ End
+                        </button>
+                    </div>
+                    {allMarks.length === 0 && (
+                        <div style={{ color: '#aaa', fontSize: 13 }}>No marks yet</div>
+                    )}
+                    {allMarks.map((mark, idx) => (
+                        <div
+                            key={'panel-' + mark.type + '-' + mark.time}
+                            onClick={mark.type === 'start' ? () => goToMark(mark.time) : undefined}
+                            style={{
+                                cursor: mark.type === 'start' ? 'pointer' : 'default',
+                                background: mark.type === 'start'
+                                    ? 'linear-gradient(90deg, #ff4d4d 0%, #ffb3b3 100%)'
+                                    : 'linear-gradient(90deg, #4d6dff 0%, #b3c6ff 100%)',
+                                color: '#fff',
+                                borderRadius: 6,
+                                padding: '6px 10px',
+                                marginBottom: 2,
+                                fontWeight: mark.type === 'start' ? 600 : 500,
+                                fontSize: 15,
+                                boxShadow: mark.type === 'start'
+                                    ? '0 1px 6px 0 rgba(255,0,0,0.15)'
+                                    : '0 1px 6px 0 rgba(0,0,255,0.10)',
+                                border: mark.time === currentTime ? '2px solid #fff' : '2px solid transparent',
+                                outline: mark.time === currentTime
+                                    ? (mark.type === 'start' ? '2px solid #ff4d4d' : '2px solid #4d6dff')
+                                    : 'none',
+                                transition: 'border 0.2s, outline 0.2s',
+                                pointerEvents: 'auto',
+                                userSelect: mark.type === 'start' ? 'auto' : 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 8,
+                                position: 'relative',
+                            }}
+                            title={mark.type === 'start' ? `Go to ${secondsToTime(mark.time)}` : `End mark at ${secondsToTime(mark.time)}`}
+                        >
+                            <span style={{ fontWeight: 700, fontSize: 17 }}>{mark.type === 'start' ? '●' : '■'}</span>
+                            <span>{secondsToTime(mark.time)}</span>
+                            <button
+                                onClick={e => {
+                                    e.stopPropagation();
+                                    removeMark(mark.time, mark.type);
+                                }}
+                                style={{
+                                    marginLeft: 'auto',
+                                    background: 'transparent',
+                                    border: 'none',
+                                    color: '#fff',
+                                    fontWeight: 700,
+                                    fontSize: 18,
+                                    cursor: 'pointer',
+                                    padding: 0,
+                                    lineHeight: 1,
+                                    opacity: 0.7,
+                                    transition: 'opacity 0.2s',
+                                }}
+                                title="Remove mark"
+                                tabIndex={0}
+                            >
+                                ×
+                            </button>
                         </div>
                     ))}
                 </div>
