@@ -99,16 +99,16 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
     useEffect(() => {
         if (!video) return;
         let lastJumpedEnd: number | null = null;
-        const EPSILON = 1.0;
+        const EPSILON = 0.5; // 500ms
         const REPEAT_OFFSET = 0.05; // 50ms after mark
         const onTimeUpdate = () => {
             const currentTime = video.currentTime;
-            // Only jump if currentTime is >= end (not just > end - EPSILON)
+            // Only jump if currentTime is >= end and < end + EPSILON (never before end)
             const hitEnd = endMarks.find((end: number) => currentTime >= end && currentTime < end + EPSILON);
             if (hitEnd !== undefined && hitEnd !== lastJumpedEnd) {
                 // Find previous start mark
                 const prevMark = [...markedCues].reverse().find((t: number) => t < hitEnd);
-                if (prevMark !== undefined) {
+                if (prevMark !== undefined && currentTime >= hitEnd) {
                     lastJumpedEnd = hitEnd;
                     video.currentTime = prevMark + REPEAT_OFFSET;
                 }
@@ -432,6 +432,13 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         return cue.toString();
     }
 
+    const [playbackRate, setPlaybackRate] = useState(1);
+    useEffect(() => {
+        if (video) {
+            video.playbackRate = playbackRate;
+        }
+    }, [video, playbackRate]);
+
     if (video) {
         const duration = video.duration || 1;
         const cues = getCues();
@@ -462,6 +469,8 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                 video.currentTime = time;
             }
         };
+
+        const playbackRates = [0.25, 0.5, 0.75, 1, 1.5, 2];
 
         return (
             <div className="CustomVideoControls" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 10, pointerEvents: 'none', userSelect: 'none' }}>
@@ -503,9 +512,32 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                     {/* Timeline background */}
                     <div style={{ width: '100%', height: 8, background: 'rgba(255,255,255,0.2)', borderRadius: 4, margin: '0 0' }} />
                 </div>
-                {/* Time display */}
-                <div style={{ color: '#fff', fontSize: 14, marginTop: 2, textAlign: 'center', textShadow: '0 1px 2px #000' }}>
-                    {secondsToTime(currentTime)} / {secondsToTime(duration)}
+                {/* Time and playback rate display */}
+                <div style={{ color: '#fff', fontSize: 14, marginTop: 2, textAlign: 'center', textShadow: '0 1px 2px #000', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16 }}>
+                    <span>{secondsToTime(currentTime)} / {secondsToTime(duration)}</span>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ fontWeight: 500 }}>Pace:</span>
+                        <select
+                            value={playbackRate}
+                            onChange={e => setPlaybackRate(Number(e.target.value))}
+                            style={{
+                                fontSize: 14,
+                                borderRadius: 4,
+                                border: '1px solid #888',
+                                padding: '2px 6px',
+                                background: '#222',
+                                color: '#fff',
+                                marginLeft: 2,
+                                outline: 'none',
+                                pointerEvents: 'auto',
+                            }}
+                            title="Set playback speed"
+                        >
+                            {playbackRates.map(rate => (
+                                <option key={rate} value={rate}>{rate}x</option>
+                            ))}
+                        </select>
+                    </span>
                 </div>
                 {/* Subtitle display */}
                 <div style={{ color: '#fff', fontSize: 18, marginTop: 8, textAlign: 'center', textShadow: '0 2px 4px #000', fontWeight: 'bold' }}>
