@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Amplifier, getAmplifier } from './volume';
-import { secondsToTime } from './time';
+import { secondsToTime, timeToSeconds } from './time';
 import './CustomVideoControls.css';
 import { useVideoContext } from '../VideoContextProvider/VideoContextProvider';
 
@@ -10,6 +10,23 @@ type CustomVideoControlsProps = {
 };
 
 function CustomVideoControls(props: CustomVideoControlsProps) {
+    // --- Editing mark state for double-click edit ---
+    const [editingMark, setEditingMark] = useState<null | { time: number, type: 'start' | 'end', value: string }>(null);
+    function finishEditMark(mark: { time: number, type: 'start' | 'end' }) {
+        if (!editingMark) return;
+        let newTime = timeToSeconds(editingMark.value);
+        if (isNaN(newTime) || newTime < 0) {
+            setEditingMark(null);
+            return;
+        }
+        // Remove old, add new
+        if (mark.type === 'start') {
+            setMarkedCues(prev => [...prev.filter(t => t !== mark.time), newTime].sort((a, b) => a - b));
+        } else {
+            setEndMarks(prev => [...prev.filter(t => t !== mark.time), newTime].sort((a, b) => a - b));
+        }
+        setEditingMark(null);
+    }
     // Identify video+subtitle pair for per-pair mark storage
     const { videoName, subtitleName } = useVideoContext();
     const storageKey = useMemo(() => {
@@ -831,84 +848,103 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                     {allMarks.length === 0 && (
                         <div style={{ color: '#aaa', fontSize: 13 }}>No marks yet</div>
                     )}
-                    {allMarks.map((mark, idx) => (
-                        <div
-                            key={'panel-' + mark.type + '-' + mark.time}
-                            onClick={mark.type === 'start' ? () => goToMark(mark.time) : undefined}
-                            style={{
-                                cursor: mark.type === 'start' ? 'pointer' : 'default',
-                                background: mark.type === 'start'
-                                    ? 'linear-gradient(90deg, #ff4d4d 0%, #ffb3b3 100%)'
-                                    : 'linear-gradient(90deg, #4d6dff 0%, #b3c6ff 100%)',
-                                color: '#fff',
-                                borderRadius: 6,
-                                padding: '6px 10px',
-                                marginBottom: 2,
-                                fontWeight: mark.type === 'start' ? 600 : 500,
-                                fontSize: 15,
-                                boxShadow: mark.type === 'start'
-                                    ? '0 1px 6px 0 rgba(255,0,0,0.15)'
-                                    : '0 1px 6px 0 rgba(0,0,255,0.10)',
-                                border: mark.time === currentTime ? '2px solid #fff' : '2px solid transparent',
-                                outline: mark.time === currentTime
-                                    ? (mark.type === 'start' ? '2px solid #ff4d4d' : '2px solid #4d6dff')
-                                    : 'none',
-                                transition: 'border 0.2s, outline 0.2s',
-                                pointerEvents: 'auto',
-                                userSelect: mark.type === 'start' ? 'auto' : 'none',
-                                display: 'flex',
-                                // alignItems: 'center',
-                                gap: 8,
-                                position: 'relative',
-                                flexDirection: 'column',
-                                alignItems: 'flex-start',
-                            }}
-                            title={mark.type === 'start' ? `Go to ${secondsToTime(mark.time)}` : `End mark at ${secondsToTime(mark.time)}`}
-                        >
-                            <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                                <span style={{ fontWeight: 700, fontSize: 17 }}>{mark.type === 'start' ? '●' : '■'}</span>
-                                <span>{secondsToTime(mark.time)}</span>
-                                <button
-                                    onClick={e => {
-                                        e.stopPropagation();
-                                        removeMark(mark.time, mark.type);
-                                    }}
-                                    style={{
-                                        marginLeft: 'auto',
-                                        background: 'transparent',
-                                        border: 'none',
-                                        color: '#fff',
-                                        fontWeight: 700,
-                                        fontSize: 18,
-                                        cursor: 'pointer',
-                                        padding: 0,
-                                        lineHeight: 1,
-                                        opacity: 0.7,
-                                        transition: 'opacity 0.2s',
-                                    }}
-                                    title="Remove mark"
-                                    tabIndex={0}
-                                >
-                                    ×
-                                </button>
-                            </div>
-                            {/* Show subtitle text in panel for start marks */}
-                            {mark.type === 'start' && mark.subtitle && (
-                                <div style={{
-                                    marginTop: 2,
-                                    fontSize: 13,
+                    {allMarks.map((mark, idx) => {
+                        const isEditing = editingMark && editingMark.time === mark.time && editingMark.type === mark.type;
+                        return (
+                            <div
+                                key={'panel-' + mark.type + '-' + mark.time}
+                                onClick={mark.type === 'start' && !isEditing ? () => goToMark(mark.time) : undefined}
+                                onDoubleClick={() => setEditingMark({ time: mark.time, type: mark.type, value: secondsToTime(mark.time) })}
+                                style={{
+                                    cursor: mark.type === 'start' ? 'pointer' : 'default',
+                                    background: mark.type === 'start'
+                                        ? 'linear-gradient(90deg, #ff4d4d 0%, #ffb3b3 100%)'
+                                        : 'linear-gradient(90deg, #4d6dff 0%, #b3c6ff 100%)',
                                     color: '#fff',
-                                    background: 'rgba(0,0,0,0.7)',
-                                    borderRadius: 4,
-                                    padding: '2px 6px',
-                                    maxWidth: 260,
-                                    whiteSpace: 'nowrap',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                }}>{mark.subtitle}</div>
-                            )}
-                        </div>
-                    ))}
+                                    borderRadius: 6,
+                                    padding: '6px 10px',
+                                    marginBottom: 2,
+                                    fontWeight: mark.type === 'start' ? 600 : 500,
+                                    fontSize: 15,
+                                    boxShadow: mark.type === 'start'
+                                        ? '0 1px 6px 0 rgba(255,0,0,0.15)'
+                                        : '0 1px 6px 0 rgba(0,0,255,0.10)',
+                                    border: mark.time === currentTime ? '2px solid #fff' : '2px solid transparent',
+                                    outline: mark.time === currentTime
+                                        ? (mark.type === 'start' ? '2px solid #ff4d4d' : '2px solid #4d6dff')
+                                        : 'none',
+                                    transition: 'border 0.2s, outline 0.2s',
+                                    pointerEvents: 'auto',
+                                    userSelect: mark.type === 'start' ? 'auto' : 'none',
+                                    display: 'flex',
+                                    gap: 8,
+                                    position: 'relative',
+                                    flexDirection: 'column',
+                                    alignItems: 'flex-start',
+                                }}
+                                title={mark.type === 'start' ? `Go to ${secondsToTime(mark.time)}` : `End mark at ${secondsToTime(mark.time)}`}
+                            >
+                                <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                                    <span style={{ fontWeight: 700, fontSize: 17 }}>{mark.type === 'start' ? '●' : '■'}</span>
+                                    {isEditing ? (
+                                        <input
+                                            type="text"
+                                            value={editingMark.value}
+                                            autoFocus
+                                            style={{ fontSize: 15, width: 120, marginLeft: 4, borderRadius: 4, border: '1px solid #888', padding: '2px 6px' }}
+                                            onChange={e => setEditingMark(editingMark => editingMark ? { ...editingMark, value: e.target.value } : null)}
+                                            onBlur={() => finishEditMark(mark)}
+                                            onKeyDown={e => {
+                                                if (e.key === 'Enter') finishEditMark(mark);
+                                                if (e.key === 'Escape') setEditingMark(null);
+                                            }}
+                                            title="Edit time (HH:MM:SS.mmm)"
+                                        />
+                                    ) : (
+                                        <span>{secondsToTime(mark.time)}</span>
+                                    )}
+                                    <button
+                                        onClick={e => {
+                                            e.stopPropagation();
+                                            removeMark(mark.time, mark.type);
+                                        }}
+                                        style={{
+                                            marginLeft: 'auto',
+                                            background: 'transparent',
+                                            border: 'none',
+                                            color: '#fff',
+                                            fontWeight: 700,
+                                            fontSize: 18,
+                                            cursor: 'pointer',
+                                            padding: 0,
+                                            lineHeight: 1,
+                                            opacity: 0.7,
+                                            transition: 'opacity 0.2s',
+                                        }}
+                                        title="Remove mark"
+                                        tabIndex={0}
+                                    >
+                                        ×
+                                    </button>
+                                </div>
+                                {/* Show subtitle text in panel for start marks */}
+                                {mark.type === 'start' && mark.subtitle && (
+                                    <div style={{
+                                        marginTop: 2,
+                                        fontSize: 13,
+                                        color: '#fff',
+                                        background: 'rgba(0,0,0,0.7)',
+                                        borderRadius: 4,
+                                        padding: '2px 6px',
+                                        maxWidth: 260,
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                    }}>{mark.subtitle}</div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
         );
