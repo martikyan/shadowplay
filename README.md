@@ -1,29 +1,32 @@
-## Simple Video Player
 
-> Why download a video player when you can simply play your videos on the browser
 
-This is a simple video player that runs on the Browser. Visit the website https://simplevideoplayer.com
+## Intonation Improvement Video Player for Language Learning & Shadowing
 
-Basically, do you have a video on your computer you'd like to play? Just visit https://simplevideoplayer.com and there you have a video player. Your videos will not be uploaded anywhwere, it's all being played locally.
+A browser-based video player designed for language learners to practice shadowing, improve intonation, and master pronunciation.
 
-It also supports subtitles (SRT and WebVTT), so add them to your videos as you watch.
+Play your own videos locally in the browser, add subtitles (SRT or WebVTT), and use custom controls crafted for language learning and shadowing practice.
+
 
 ### Features
 
-- You can add subtitle files (SRT or WebVTT) to your video.
-- Easy to use keyboard controls
-- VLC style volume amplification
+- Add subtitle files (SRT or WebVTT) to your video for reading along and shadowing.
+- Custom video controls for language learning and shadowing (A/B repeat, slow playback, quick rewind, etc.).
+- Easy-to-use keyboard shortcuts for efficient practice.
+- Volume amplification (VLC style).
+- All processing is local—your videos and subtitles never leave your device.
 
-### Why did I build this?
 
-So sometimes I have videos which might have been downloaded from untrusted sources and I'm worried about the safety of playing them with any app on my machine. If the video is indeed corrupted with some virus, depending on the kind of firewall rules you have enabled, any app that plays the video may be exploited to grant it persmissions to execute some unwanted actions.
+### Why language learning & shadowing?
 
-Because browsers like Chrome, and Brave have [sandboxing](https://computer.howstuffworks.com/google-chrome-browser7.htm), I'm often fairly more confident about playing these video files via my browser. Even though they are also [not 100% secure](https://security.stackexchange.com/a/122105), I am more assured when using them. Also browsers are updated more often than a lot of video players, so if there were a security issue revolving around video players on the browser, you are likelier to have your browser updated with a security fix than your offline video player.
+Shadowing is a proven technique for language acquisition, especially for improving intonation, rhythm, and pronunciation. This player is designed to make shadowing easy and effective by providing:
 
-Also I was just really surprised nothing like this already exists on the internet. :/
+- Fine-grained playback controls (slow down, repeat, jump back)
+- Subtitle support for reading and listening simultaneously
+- A distraction-free interface focused on language practice
 
-PS: My take on this is not based on any in-depth research, but rather a somewhat superficial knowledge on how Computers, Viruses, and Browsers work.
+The player is also secure: all video and subtitle processing happens locally in your browser, so your files are never uploaded anywhere.
+
 
 ### Contributions
 
-Oh yes please! Clearly there's a lot of room for improvement. Keyboard shortcuts, and lots of other general video player functionalities. I'd be happy to review your PR. :)
+Contributions are welcome! There is plenty of room for new features—such as more advanced shadowing tools, better subtitle handling, and additional language learning aids. Feel free to open an issue or submit a pull request.
