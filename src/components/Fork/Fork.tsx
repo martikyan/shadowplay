@@ -5,7 +5,7 @@ function Fork() {
     return (
         <>
             <a
-                href='https://github.com/ifedapoolarewaju/simplevideoplayer'
+                href='https://github.com/martikyan/shadowplay'
                 className='github-corner'
                 aria-label='View source on GitHub'
                 target='_blank'

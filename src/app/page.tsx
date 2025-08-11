@@ -11,7 +11,7 @@ export default function Home() {
                     <div className='App-icon'>
                         <img src={logo.src} width='15px' alt='logo' />
                     </div>
-                    <span className='App-name'>Simple Video Player</span>
+                    <span className='App-name'>ShadowPlay</span>
                 </div>
                 <Fork />
             </header>
@@ -44,11 +44,11 @@ export default function Home() {
                         <p>
                             1.{' '}
                             <a
-                                href='https://github.com/ifedapoolarewaju/simplevideoplayer#why-did-i-build-this'
+                                href='https://github.com/ifedapoolarewaju/shadowplay#why-did-i-build-this'
                                 target='_blank'
                                 rel='noopener noreferrer'
                             >
-                                An abridged version of why Simple Video Player
+                                An abridged version of why ShadowPlay
                                 was built.
                             </a>
                         </p>

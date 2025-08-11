@@ -7,9 +7,9 @@ import VideoContextProvider from '@/components/VideoContextProvider/VideoContext
 const inter = Inter({ subsets: ['latin'] });
 
 export const metadata: Metadata = {
-    title: 'Simple Video Player - Play local video files on the browser',
+    title: 'ShadowPlay - Video Player for Language Learning & Shadowing',
     description:
-        'Simple Video Player lets you play your local video files via the browser. You can also add subtitle files to your video as you watch. Your videos will not be uploaded anywhere',
+        'ShadowPlay is a browser-based video player designed for language learners to practice shadowing, improve intonation, and master pronunciation. Play your own videos locally, add subtitles (SRT or WebVTT), and use custom controls crafted for language learning and shadowing practice. All processing is local—your videos and subtitles never leave your device.',
 };
 
 export default function RootLayout({
@@ -22,9 +22,7 @@ export default function RootLayout({
             <GoogleTagManager gtmId='UA-172486649-1' />
             <body className={inter.className}>
                 <noscript>
-                    Simple Video Player lets you play your local video files via
-                    the browser. You can also add subtitle files to your video
-                    as you watch. Your videos will not be uploaded anywhere.
+                    ShadowPlay is a video player for language learners to practice shadowing, intonation, and pronunciation. Play your own videos locally, add subtitles, and use custom controls for effective language learning. All processing is local—your files never leave your device.
                 </noscript>
                 <VideoContextProvider>{children}</VideoContextProvider>
             </body>
