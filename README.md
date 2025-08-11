@@ -33,3 +33,8 @@ The player is also secure: all video and subtitle processing happens locally in 
 ### Contributions
 
 Contributions are welcome! There is plenty of room for new features—such as more advanced shadowing tools, better subtitle handling, and additional language learning aids. Feel free to open an issue or submit a pull request.
+
+### Fork
+
+This is a fork from https://github.com/ifedapoolarewaju/simplevideoplayer
+Huge thanks to [ifedapoolarewaju](https://github.com/ifedapoolarewaju)
