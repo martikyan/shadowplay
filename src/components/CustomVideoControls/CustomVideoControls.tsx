@@ -177,6 +177,24 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
     // Show clock animation during repeat wait
     const [showClock, setShowClock] = useState(false);
     const clockTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+    // Token to invalidate any pending auto-resume callbacks
+    const autoResumeTokenRef = useRef<number>(0);
+    // During programmatic pause/seek, ignore cancel-triggering events until this timestamp (ms since epoch)
+    const ignoreCancelBeforeRef = useRef<number>(0);
+    // True only during the 1s auto-pause window between jump and autoresume
+    const inAutoPauseRef = useRef<boolean>(false);
+    // Timestamp of the most recent user gesture (pointer/keyboard) observed during auto-pause
+    const lastUserGestureTsRef = useRef<number>(0);
+    // Cancel any pending auto-resume and hide clock (used on user playback interactions)
+    const cancelPendingAutoResume = () => {
+        if (clockTimeoutRef.current) {
+            clearTimeout(clockTimeoutRef.current);
+            clockTimeoutRef.current = null;
+        }
+        // Invalidate current token so any already-fired callback captured won't act
+        autoResumeTokenRef.current += 1;
+        setShowClock(false);
+    };
     // Keep currentTimeState in sync with video.currentTime
     useEffect(() => {
         // J/L: jump backward/forward by one subtitle cue
@@ -226,13 +244,23 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                 if (prevMark !== undefined && currentTime >= hitEnd) {
                     lastJumpedEnd = hitEnd;
                     // Pause, jump, then wait 1s before resuming
+                    // Enter auto-pause window and set a brief suppression window to ignore programmatic events below
+                    inAutoPauseRef.current = true;
+                    ignoreCancelBeforeRef.current = Date.now() + 300; // ~300ms covers pause/seeking/seeked dispatch
                     video.pause();
                     video.currentTime = prevMark + REPEAT_OFFSET;
                     setShowClock(true);
                     if (clockTimeoutRef.current) clearTimeout(clockTimeoutRef.current);
+                    // Issue a new token for this auto-resume cycle
+                    const myToken = ++autoResumeTokenRef.current;
                     clockTimeoutRef.current = setTimeout(() => {
-                        setShowClock(false);
-                        video.play();
+                        // Only auto-resume if this token is still current (i.e., not canceled by user interaction)
+                        if (autoResumeTokenRef.current === myToken) {
+                            setShowClock(false);
+                            void video.play();
+                        }
+                        clockTimeoutRef.current = null;
+                        inAutoPauseRef.current = false;
                     }, 1000);
                 }
             }
@@ -242,8 +270,46 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             }
         };
         video.addEventListener('timeupdate', onTimeUpdate);
+        // If user interacts with playback during the 1s pause, cancel the pending auto-resume
+        const onPlay = () => {
+            // Only cancel if we're in the auto-pause window, not within the initial suppression,
+            // and a recent user gesture was detected (likely user-initiated play/seek)
+            const now = Date.now();
+            if (!inAutoPauseRef.current) return;
+            if (now < ignoreCancelBeforeRef.current) return;
+            if (now - lastUserGestureTsRef.current > 1000) return;
+            cancelPendingAutoResume();
+        };
+        // We don't cancel on pause; the video is already paused during the wait
+        const onSeeking = () => {
+            const now = Date.now();
+            if (!inAutoPauseRef.current) return;
+            if (now < ignoreCancelBeforeRef.current) return;
+            if (now - lastUserGestureTsRef.current > 1000) return;
+            cancelPendingAutoResume();
+        };
+        const onSeeked = () => {
+            const now = Date.now();
+            if (!inAutoPauseRef.current) return;
+            if (now < ignoreCancelBeforeRef.current) return;
+            if (now - lastUserGestureTsRef.current > 1000) return;
+            cancelPendingAutoResume();
+        };
+        // Scoped gesture listeners: only track gestures while in the auto-pause window
+        const onPointerDown = () => { if (inAutoPauseRef.current) lastUserGestureTsRef.current = Date.now(); };
+        const onKeyDown = () => { if (inAutoPauseRef.current) lastUserGestureTsRef.current = Date.now(); };
+        video.addEventListener('play', onPlay);
+        video.addEventListener('seeking', onSeeking);
+        video.addEventListener('seeked', onSeeked);
+        window.addEventListener('pointerdown', onPointerDown);
+        window.addEventListener('keydown', onKeyDown);
         return () => {
             video.removeEventListener('timeupdate', onTimeUpdate);
+            video.removeEventListener('play', onPlay);
+            video.removeEventListener('seeking', onSeeking);
+            video.removeEventListener('seeked', onSeeked);
+            window.removeEventListener('pointerdown', onPointerDown);
+            window.removeEventListener('keydown', onKeyDown);
             if (clockTimeoutRef.current) clearTimeout(clockTimeoutRef.current);
         };
     }, [video, markedCues, endMarks]);
@@ -419,36 +485,6 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         });
         };
 
-        // Remove closest future mark (regular or end) within 1 minute with 'KeyR'
-        const removeClosestFutureMark = (e: KeyboardEvent) => {
-            if (e.code !== 'KeyR') return;
-            if (isTextInputFocused()) return;
-            e.preventDefault();
-            const currentTime = video.currentTime;
-            const oneMinute = 60;
-            // Find all future marks within 1 minute
-            const futureRegular = markedCues.filter(t => t > currentTime && t - currentTime <= oneMinute);
-            const futureEnd = endMarks.filter(t => t > currentTime && t - currentTime <= oneMinute);
-            // Find the closest among both
-            let closest: { type: 'regular' | 'end', time: number } | null = null;
-            if (futureRegular.length > 0) {
-                const t = futureRegular.reduce((a, b) => (a - currentTime < b - currentTime ? a : b));
-                closest = { type: 'regular', time: t };
-            }
-            if (futureEnd.length > 0) {
-                const t = futureEnd.reduce((a, b) => (a - currentTime < b - currentTime ? a : b));
-                if (!closest || t - currentTime < closest.time - currentTime) {
-                    closest = { type: 'end', time: t };
-                }
-            }
-            if (!closest) return;
-            if (closest.type === 'regular') {
-    const EPSILON = 0.09; // 90ms
-        setMarkedCues(prev => prev.filter(t => Math.abs(t - closest!.time) >= EPSILON));
-            } else {
-                setEndMarks(prev => prev.filter(t => t !== closest!.time));
-            }
-        };
 
         // ArrowRight/ArrowLeft: always jump 10 seconds forward/backward
         const adjustVideoTime = (e: KeyboardEvent) => {
@@ -508,10 +544,6 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             if (isTextInputFocused()) return;
             markEndCue(e);
         };
-        const removeClosestFutureMarkWrapped = (e: KeyboardEvent) => {
-            if (isTextInputFocused()) return;
-            removeClosestFutureMark(e);
-        };
         const adjustVideoTimeWrapped = (e: KeyboardEvent) => {
             if (isTextInputFocused()) return;
             adjustVideoTime(e);
@@ -519,32 +551,29 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
 
         document.addEventListener('keydown', markCueWrapped);
         document.addEventListener('keydown', markEndCueWrapped);
-        document.addEventListener('keydown', removeClosestFutureMarkWrapped);
         document.addEventListener('keydown', adjustVideoTimeWrapped);
         document.addEventListener('keydown', preciseJump);
         document.addEventListener('keydown', jumpBySubtitle);
         return () => {
             document.removeEventListener('keydown', markCueWrapped);
             document.removeEventListener('keydown', markEndCueWrapped);
-            document.removeEventListener('keydown', removeClosestFutureMarkWrapped);
             document.removeEventListener('keydown', adjustVideoTimeWrapped);
             document.removeEventListener('keydown', preciseJump);
             document.removeEventListener('keydown', jumpBySubtitle);
         };
     }, [video, markedCues, endMarks]);
 
-    // spacebar play-pause control
+    // spacebar and 'K' play-pause control
     useEffect(() => {
         const playOrPause = (e: KeyboardEvent) => {
             if (isTextInputFocused()) return;
             const SPACEBAR_KEY = 'Space';
-            if (e.code !== SPACEBAR_KEY) {
+            const K_KEY = 'KeyK';
+            if (e.code !== SPACEBAR_KEY && e.code !== K_KEY) {
                 return;
             }
             e.preventDefault();
-            if (e.code === SPACEBAR_KEY) {
-                playVideo();
-            }
+            playVideo();
         };
         document.addEventListener('keydown', playOrPause);
         return () => {
@@ -607,6 +636,8 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         const goToMark = (time: number) => {
             if (video) {
                 video.currentTime = time;
+                // Autoplay when user clicks a start mark
+                void video.play();
             }
         };
 
