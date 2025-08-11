@@ -37,6 +37,30 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
     // Flag to avoid overwriting existing storage with empty arrays on first mount
     const storageReadyRef = useRef(false);
     const lastLoadedKeyRef = useRef<string | null>(null);
+    // Pass mode: ignore end-mark auto-jumps for a short window or until manually toggled off
+    const [passMode, setPassMode] = useState(false);
+    // If true, pass mode is manually toggled and shouldn't auto-disable
+    const passModeStickyRef = useRef(false);
+    const passModeAutoTimerRef = useRef<NodeJS.Timeout | null>(null);
+    const pulsePassMode = (ms: number = 1000) => {
+        if (passModeStickyRef.current) return; // don't override manual ON
+        setPassMode(true);
+        if (passModeAutoTimerRef.current) clearTimeout(passModeAutoTimerRef.current);
+        passModeAutoTimerRef.current = setTimeout(() => {
+            if (!passModeStickyRef.current) setPassMode(false);
+            passModeAutoTimerRef.current = null;
+        }, ms);
+    };
+    const togglePassMode = () => {
+        passModeStickyRef.current = !passModeStickyRef.current;
+        if (passModeStickyRef.current) {
+            if (passModeAutoTimerRef.current) clearTimeout(passModeAutoTimerRef.current);
+            passModeAutoTimerRef.current = null;
+            setPassMode(true);
+        } else {
+            setPassMode(false);
+        }
+    };
         // Remove a mark by time and type
         const removeMark = (time: number, type: 'start' | 'end') => {
             if (type === 'start') {
@@ -60,11 +84,15 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             // Jump to previous cue
             if (currentCueIdx > 0) {
                 video.currentTime = cues[currentCueIdx - 1].startTime;
+                // Pulse pass mode to avoid immediate auto-jump at nearby end marks
+                pulsePassMode();
             }
         } else if (e.code === 'KeyL') {
             // Jump to next cue
             if (currentCueIdx !== -1 && currentCueIdx < cues.length - 1) {
                 video.currentTime = cues[currentCueIdx + 1].startTime;
+                // Pulse pass mode to avoid immediate auto-jump at nearby end marks
+                pulsePassMode();
             }
         }
     }
@@ -195,6 +223,10 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         autoResumeTokenRef.current += 1;
         setShowClock(false);
     };
+    // Cleanup pass mode timer on unmount
+    useEffect(() => () => {
+        if (passModeAutoTimerRef.current) clearTimeout(passModeAutoTimerRef.current);
+    }, []);
     // Keep currentTimeState in sync with video.currentTime
     useEffect(() => {
         // J/L: jump backward/forward by one subtitle cue
@@ -236,6 +268,13 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         const REPEAT_OFFSET = 0.05; // 50ms after mark
         const onTimeUpdate = () => {
             const currentTime = video.currentTime;
+            // In pass mode, ignore all auto-jumps
+            if (passMode) {
+                if (lastJumpedEnd !== null && (currentTime < lastJumpedEnd - EPSILON || currentTime > lastJumpedEnd + EPSILON)) {
+                    lastJumpedEnd = null;
+                }
+                return;
+            }
             // Only jump if currentTime is >= end and < end + EPSILON (never before end)
             const hitEnd = endMarks.find((end: number) => currentTime >= end && currentTime < end + EPSILON);
             if (hitEnd !== undefined && hitEnd !== lastJumpedEnd) {
@@ -268,7 +307,7 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             if (lastJumpedEnd !== null && (currentTime < lastJumpedEnd - EPSILON || currentTime > lastJumpedEnd + EPSILON)) {
                 lastJumpedEnd = null;
             }
-        };
+    };
         video.addEventListener('timeupdate', onTimeUpdate);
         // If user interacts with playback during the 1s pause, cancel the pending auto-resume
         const onPlay = () => {
@@ -312,7 +351,7 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             window.removeEventListener('keydown', onKeyDown);
             if (clockTimeoutRef.current) clearTimeout(clockTimeoutRef.current);
         };
-    }, [video, markedCues, endMarks]);
+    }, [video, markedCues, endMarks, passMode]);
     // Helper: get cues from the first text track (assumes subtitles are loaded)
     function getCues(): TextTrackCue[] {
         if (!video || !video.textTracks || video.textTracks.length === 0) return [];
@@ -502,6 +541,8 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                 video.currentTime = Math.max(0, currentTime - 10);
             }
             displayVideoTime();
+            // User navigation should briefly bypass end marks
+            pulsePassMode();
         };
 
         // U/O: jump 0.5 seconds backward/forward
@@ -521,6 +562,8 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                 video.currentTime = Math.max(0, currentTime - 0.5);
             }
             displayVideoTime();
+            // User navigation should briefly bypass end marks
+            pulsePassMode();
         };
 
         // Helper to check if a text input is focused
@@ -574,12 +617,27 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             }
             e.preventDefault();
             playVideo();
+            // Briefly bypass end marks after user playback control
+            pulsePassMode();
         };
         document.addEventListener('keydown', playOrPause);
         return () => {
             document.removeEventListener('keydown', playOrPause);
         };
     }, [video]);
+
+    // Keyboard toggle for pass mode (P)
+    useEffect(() => {
+        const onKeyTogglePass = (e: KeyboardEvent) => {
+            if (isTextInputFocused()) return;
+            if (e.code === 'KeyP') {
+                e.preventDefault();
+                togglePassMode();
+            }
+        };
+        document.addEventListener('keydown', onKeyTogglePass);
+        return () => document.removeEventListener('keydown', onKeyTogglePass);
+    }, []);
 
     // Timeline and subtitle overlay (single timeline, with start and end marks)
     function getCueText(cue: any): string {
@@ -633,8 +691,10 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         ].sort((a, b) => a.time - b.time);
 
         // Handler for clicking a mark (only start marks are clickable)
-        const goToMark = (time: number) => {
+    const goToMark = (time: number) => {
             if (video) {
+        // Briefly bypass end marks when user jumps to a mark
+        pulsePassMode();
                 video.currentTime = time;
                 // Autoplay when user clicks a start mark
                 void video.play();
@@ -712,6 +772,23 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                             ))}
                         </select>
                     </span>
+                    <button
+                        onClick={() => togglePassMode()}
+                        style={{
+                            pointerEvents: 'auto',
+                            fontSize: 13,
+                            borderRadius: 6,
+                            border: '1px solid #888',
+                            padding: '3px 10px',
+                            background: passMode ? 'linear-gradient(90deg, #2ecc71 0%, #6de39a 100%)' : '#222',
+                            color: '#fff',
+                            boxShadow: passMode ? '0 1px 6px 0 rgba(0,255,128,0.20)' : 'none',
+                            cursor: 'pointer'
+                        }}
+                        title="Toggle pass mode (P). When ON, marks are ignored for auto-jumps."
+                    >
+                        {passMode ? 'Pass: ON' : 'Pass: OFF'}
+                    </button>
                 </div>
                 {/* Subtitle display */}
                 <div style={{ color: '#fff', fontSize: 18, marginTop: 8, textAlign: 'center', textShadow: '0 2px 4px #000', fontWeight: 'bold' }}>
