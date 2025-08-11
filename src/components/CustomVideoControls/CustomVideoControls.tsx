@@ -469,9 +469,19 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             }
         }
 
-        // Combine and sort all marks
+        // Combine and sort all marks, and attach subtitle text for start marks
         const allMarks = [
-            ...markedCues.map(t => ({ time: t, type: 'start' as const })),
+            ...markedCues.map(t => {
+                // Find the cue whose startTime is closest to t (within 0.5s)
+                let cueText = '';
+                let cue = cues.find(c => Math.abs(c.startTime - t) < 0.5);
+                if (!cue) {
+                    // If no cue is close, find the nearest future cue
+                    cue = cues.find(c => c.startTime > t);
+                }
+                if (cue) cueText = getCueText(cue);
+                return { time: t, type: 'start' as const, subtitle: cueText };
+            }),
             ...endMarks.map(t => ({ time: t, type: 'end' as const })),
         ].sort((a, b) => a.time - b.time);
 
@@ -530,24 +540,49 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                 {/* Timeline */}
                 <div style={{ position: 'relative', height: 32, margin: '0 32px', background: 'rgba(0,0,0,0.3)', borderRadius: 8, display: 'flex', alignItems: 'center' }}>
                     {allMarks.map((mark, idx) => (
-                        <div
-                            key={mark.type + '-' + mark.time}
-                            style={{
-                                position: 'absolute',
-                                left: `${(mark.time / duration) * 100}%`,
-                                top: -6,
-                                bottom: -6,
-                                width: 14,
-                                background: mark.type === 'start' ? 'red' : 'blue',
-                                borderRadius: 7,
-                                border: '2px solid #fff',
-                                boxShadow: mark.type === 'start'
-                                    ? '0 0 16px 6px rgba(255,0,0,0.7), 0 0 2px 2px #fff'
-                                    : '0 0 16px 6px rgba(0,0,255,0.7), 0 0 2px 2px #fff',
-                                zIndex: 2,
-                                transform: 'translateX(-7px)'
-                            }}
-                        />
+                        <React.Fragment key={mark.type + '-' + mark.time}>
+                            <div
+                                style={{
+                                    position: 'absolute',
+                                    left: `${(mark.time / duration) * 100}%`,
+                                    top: -6,
+                                    bottom: -6,
+                                    width: 14,
+                                    background: mark.type === 'start' ? 'red' : 'blue',
+                                    borderRadius: 7,
+                                    border: '2px solid #fff',
+                                    boxShadow: mark.type === 'start'
+                                        ? '0 0 16px 6px rgba(255,0,0,0.7), 0 0 2px 2px #fff'
+                                        : '0 0 16px 6px rgba(0,0,255,0.7), 0 0 2px 2px #fff',
+                                    zIndex: 2,
+                                    transform: 'translateX(-7px)'
+                                }}
+                            />
+                            {/* Show subtitle text above red mark if present */}
+                            {mark.type === 'start' && mark.subtitle && (
+                                <div
+                                    style={{
+                                        position: 'absolute',
+                                        left: `${(mark.time / duration) * 100}%`,
+                                        top: -38,
+                                        transform: 'translateX(-50%)',
+                                        background: 'rgba(0,0,0,0.85)',
+                                        color: '#fff',
+                                        padding: '2px 8px',
+                                        borderRadius: 6,
+                                        fontSize: 13,
+                                        maxWidth: 180,
+                                        whiteSpace: 'nowrap',
+                                        overflow: 'hidden',
+                                        textOverflow: 'ellipsis',
+                                        pointerEvents: 'none',
+                                        zIndex: 10,
+                                    }}
+                                >
+                                    {mark.subtitle}
+                                </div>
+                            )}
+                        </React.Fragment>
                     ))}
                     {/* Current time indicator */}
                     <div
@@ -613,9 +648,9 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                         position: 'absolute',
                         top: 16,
                         right: 0,
-                        width: 210,
+                        width: 320,
                         minHeight: 120,
-                        maxHeight: 340,
+                        maxHeight: 440,
                         overflowY: 'auto',
                         background: 'rgba(30,30,40,0.97)',
                         borderRadius: '12px 0 0 12px',
@@ -721,37 +756,56 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                                 pointerEvents: 'auto',
                                 userSelect: mark.type === 'start' ? 'auto' : 'none',
                                 display: 'flex',
-                                alignItems: 'center',
+                                // alignItems: 'center',
                                 gap: 8,
                                 position: 'relative',
+                                flexDirection: 'column',
+                                alignItems: 'flex-start',
                             }}
                             title={mark.type === 'start' ? `Go to ${secondsToTime(mark.time)}` : `End mark at ${secondsToTime(mark.time)}`}
                         >
-                            <span style={{ fontWeight: 700, fontSize: 17 }}>{mark.type === 'start' ? '●' : '■'}</span>
-                            <span>{secondsToTime(mark.time)}</span>
-                            <button
-                                onClick={e => {
-                                    e.stopPropagation();
-                                    removeMark(mark.time, mark.type);
-                                }}
-                                style={{
-                                    marginLeft: 'auto',
-                                    background: 'transparent',
-                                    border: 'none',
+                            <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
+                                <span style={{ fontWeight: 700, fontSize: 17 }}>{mark.type === 'start' ? '●' : '■'}</span>
+                                <span>{secondsToTime(mark.time)}</span>
+                                <button
+                                    onClick={e => {
+                                        e.stopPropagation();
+                                        removeMark(mark.time, mark.type);
+                                    }}
+                                    style={{
+                                        marginLeft: 'auto',
+                                        background: 'transparent',
+                                        border: 'none',
+                                        color: '#fff',
+                                        fontWeight: 700,
+                                        fontSize: 18,
+                                        cursor: 'pointer',
+                                        padding: 0,
+                                        lineHeight: 1,
+                                        opacity: 0.7,
+                                        transition: 'opacity 0.2s',
+                                    }}
+                                    title="Remove mark"
+                                    tabIndex={0}
+                                >
+                                    ×
+                                </button>
+                            </div>
+                            {/* Show subtitle text in panel for start marks */}
+                            {mark.type === 'start' && mark.subtitle && (
+                                <div style={{
+                                    marginTop: 2,
+                                    fontSize: 13,
                                     color: '#fff',
-                                    fontWeight: 700,
-                                    fontSize: 18,
-                                    cursor: 'pointer',
-                                    padding: 0,
-                                    lineHeight: 1,
-                                    opacity: 0.7,
-                                    transition: 'opacity 0.2s',
-                                }}
-                                title="Remove mark"
-                                tabIndex={0}
-                            >
-                                ×
-                            </button>
+                                    background: 'rgba(0,0,0,0.7)',
+                                    borderRadius: 4,
+                                    padding: '2px 6px',
+                                    maxWidth: 260,
+                                    whiteSpace: 'nowrap',
+                                    overflow: 'hidden',
+                                    textOverflow: 'ellipsis',
+                                }}>{mark.subtitle}</div>
+                            )}
                         </div>
                     ))}
                 </div>
