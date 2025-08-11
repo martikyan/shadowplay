@@ -655,69 +655,6 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                         `}</style>
                     </div>
                 )}
-                {/* Timeline */}
-                <div style={{ position: 'relative', height: 32, margin: '0 32px', background: 'rgba(0,0,0,0.3)', borderRadius: 8, display: 'flex', alignItems: 'center' }}>
-                    {allMarks.map((mark, idx) => (
-                        <React.Fragment key={mark.type + '-' + mark.time}>
-                            <div
-                                style={{
-                                    position: 'absolute',
-                                    left: `${(mark.time / duration) * 100}%`,
-                                    top: -6,
-                                    bottom: -6,
-                                    width: 14,
-                                    background: mark.type === 'start' ? 'red' : 'blue',
-                                    borderRadius: 7,
-                                    border: '2px solid #fff',
-                                    boxShadow: mark.type === 'start'
-                                        ? '0 0 16px 6px rgba(255,0,0,0.7), 0 0 2px 2px #fff'
-                                        : '0 0 16px 6px rgba(0,0,255,0.7), 0 0 2px 2px #fff',
-                                    zIndex: 2,
-                                    transform: 'translateX(-7px)'
-                                }}
-                            />
-                            {/* Show subtitle text above red mark if present */}
-                            {mark.type === 'start' && mark.subtitle && (
-                                <div
-                                    style={{
-                                        position: 'absolute',
-                                        left: `${(mark.time / duration) * 100}%`,
-                                        top: -38,
-                                        transform: 'translateX(-50%)',
-                                        background: 'rgba(0,0,0,0.85)',
-                                        color: '#fff',
-                                        padding: '2px 8px',
-                                        borderRadius: 6,
-                                        fontSize: 13,
-                                        maxWidth: 180,
-                                        whiteSpace: 'nowrap',
-                                        overflow: 'hidden',
-                                        textOverflow: 'ellipsis',
-                                        pointerEvents: 'none',
-                                        zIndex: 10,
-                                    }}
-                                >
-                                    {mark.subtitle}
-                                </div>
-                            )}
-                        </React.Fragment>
-                    ))}
-                    {/* Current time indicator */}
-                    <div
-                        style={{
-                            position: 'absolute',
-                            left: `${(currentTime / duration) * 100}%`,
-                            top: 0,
-                            bottom: 0,
-                            width: 2,
-                            background: 'white',
-                            borderRadius: 1,
-                            transform: 'translateX(-1px)'
-                        }}
-                    />
-                    {/* Timeline background */}
-                    <div style={{ width: '100%', height: 8, background: 'rgba(255,255,255,0.2)', borderRadius: 4, margin: '0 0' }} />
-                </div>
                 {/* Time and playback rate display */}
                 <div style={{ color: '#fff', fontSize: 14, marginTop: 2, textAlign: 'center', textShadow: '0 1px 2px #000', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16 }}>
                     <span>{secondsToTime(currentTime)} / {secondsToTime(duration)}</span>
