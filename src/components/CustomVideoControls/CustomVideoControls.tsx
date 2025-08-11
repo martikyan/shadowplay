@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Amplifier, getAmplifier } from './volume';
 import { secondsToTime } from './time';
 import './CustomVideoControls.css';
@@ -62,6 +62,9 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
     const [endMarks, setEndMarks] = useState<number[]>([]);
     // Track current time for instant UI updates
     const [currentTimeState, setCurrentTimeState] = useState(0);
+    // Show clock animation during repeat wait
+    const [showClock, setShowClock] = useState(false);
+    const clockTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     // Keep currentTimeState in sync with video.currentTime
     useEffect(() => {
         // J/L: jump backward/forward by one subtitle cue
@@ -113,7 +116,10 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                     // Pause, jump, then wait 1s before resuming
                     video.pause();
                     video.currentTime = prevMark + REPEAT_OFFSET;
-                    setTimeout(() => {
+                    setShowClock(true);
+                    if (clockTimeoutRef.current) clearTimeout(clockTimeoutRef.current);
+                    clockTimeoutRef.current = setTimeout(() => {
+                        setShowClock(false);
                         video.play();
                     }, 1000);
                 }
@@ -126,6 +132,7 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         video.addEventListener('timeupdate', onTimeUpdate);
         return () => {
             video.removeEventListener('timeupdate', onTimeUpdate);
+            if (clockTimeoutRef.current) clearTimeout(clockTimeoutRef.current);
         };
     }, [video, markedCues, endMarks]);
     // Helper: get cues from the first text track (assumes subtitles are loaded)
@@ -479,6 +486,47 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
 
         return (
             <div className="CustomVideoControls" style={{ position: 'absolute', left: 0, right: 0, bottom: 0, zIndex: 10, pointerEvents: 'none', userSelect: 'none' }}>
+                {/* Clock animation overlay */}
+                {showClock && (
+                    <div style={{
+                        position: 'absolute',
+                        top: -8,
+                        left: 24,
+                        zIndex: 100,
+                        pointerEvents: 'auto',
+                        transition: 'opacity 0.3s',
+                        background: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                    }}>
+                        <div style={{
+                            width: 38,
+                            height: 38,
+                            borderRadius: '50%',
+                            border: '4px solid #fff',
+                            borderTop: '4px solid #4d6dff',
+                            animation: 'clockspin 1s linear infinite',
+                            boxShadow: '0 0 8px 1px #0004',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            background: 'rgba(255,255,255,0.01)',
+                        }}>
+                            <svg width="18" height="18" viewBox="0 0 40 40">
+                                <circle cx="20" cy="20" r="18" stroke="#4d6dff" strokeWidth="2" fill="none" />
+                                <line x1="20" y1="20" x2="20" y2="8" stroke="#4d6dff" strokeWidth="2" strokeLinecap="round" />
+                                <line x1="20" y1="20" x2="32" y2="20" stroke="#4d6dff" strokeWidth="2" strokeLinecap="round" />
+                            </svg>
+                        </div>
+                        <style>{`
+                            @keyframes clockspin {
+                                0% { transform: rotate(0deg); }
+                                100% { transform: rotate(360deg); }
+                            }
+                        `}</style>
+                    </div>
+                )}
                 {/* Timeline */}
                 <div style={{ position: 'relative', height: 32, margin: '0 32px', background: 'rgba(0,0,0,0.3)', borderRadius: 8, display: 'flex', alignItems: 'center' }}>
                     {allMarks.map((mark, idx) => (
