@@ -110,7 +110,12 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                 const prevMark = [...markedCues].reverse().find((t: number) => t < hitEnd);
                 if (prevMark !== undefined && currentTime >= hitEnd) {
                     lastJumpedEnd = hitEnd;
+                    // Pause, jump, then wait 1s before resuming
+                    video.pause();
                     video.currentTime = prevMark + REPEAT_OFFSET;
+                    setTimeout(() => {
+                        video.play();
+                    }, 1000);
                 }
             }
             // Reset lastJumpedEnd if we move away
