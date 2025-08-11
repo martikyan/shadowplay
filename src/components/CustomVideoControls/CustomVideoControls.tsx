@@ -248,20 +248,6 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
     }, [video, amplifier, volumeMultiplier]);
 
     // subtitle marking and navigation
-    // Persist marks in localStorage
-    useEffect(() => {
-        localStorage.setItem('markedCues', JSON.stringify(markedCues));
-    }, [markedCues]);
-    useEffect(() => {
-        localStorage.setItem('endMarks', JSON.stringify(endMarks));
-    }, [endMarks]);
-    useEffect(() => {
-        // Load marks from localStorage on mount
-        const stored = localStorage.getItem('markedCues');
-        if (stored) setMarkedCues(JSON.parse(stored));
-        const storedEnd = localStorage.getItem('endMarks');
-        if (storedEnd) setEndMarks(JSON.parse(storedEnd));
-    }, []);
 
     useEffect(() => {
         if (!video) return;
@@ -472,11 +458,12 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         // Combine and sort all marks, and attach subtitle text for start marks
         const allMarks = [
             ...markedCues.map(t => {
-                // Find the cue whose startTime is closest to t (within 0.5s)
+                // Show the subtitle that is visible exactly at the mark time.
+                // If none is visible at that instant, show the next future subtitle.
+                // Use millisecond precision as provided by mark times.
                 let cueText = '';
-                let cue = cues.find(c => Math.abs(c.startTime - t) < 0.5);
+                let cue = cues.find(c => c.startTime <= t && t < c.endTime);
                 if (!cue) {
-                    // If no cue is close, find the nearest future cue
                     cue = cues.find(c => c.startTime > t);
                 }
                 if (cue) cueText = getCueText(cue);
