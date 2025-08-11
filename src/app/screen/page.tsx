@@ -11,7 +11,7 @@ import { redirect, useRouter } from 'next/navigation';
 
 const Screen = () => {
     const [cutTheLights, setCutTheLights] = useState(false);
-    const { videoUrl, videoName, subtitleSrc } = useVideoContext();
+    const { videoUrl, videoName, subtitleSrc, subtitleName } = useVideoContext();
     const router = useRouter();
     if (!videoUrl.length) {
         redirect('/');
@@ -43,6 +43,7 @@ const Screen = () => {
                     videoName={videoName}
                     videoSrc={videoUrl}
                     subtitleSrc={subtitleSrc}
+                    subtitleName={subtitleName}
                 />
                 <div className='App-Video-Actions' style={{ visibility }}>
                     <SubtitleSelector />

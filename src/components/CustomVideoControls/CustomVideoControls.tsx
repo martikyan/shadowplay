@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Amplifier, getAmplifier } from './volume';
 import { secondsToTime } from './time';
 import './CustomVideoControls.css';
+import { useVideoContext } from '../VideoContextProvider/VideoContextProvider';
 
 type CustomVideoControlsProps = {
     setVideo: React.Dispatch<React.SetStateAction<HTMLVideoElement | null>>;
@@ -9,6 +10,16 @@ type CustomVideoControlsProps = {
 };
 
 function CustomVideoControls(props: CustomVideoControlsProps) {
+    // Identify video+subtitle pair for per-pair mark storage
+    const { videoName, subtitleName } = useVideoContext();
+    const storageKey = useMemo(() => {
+        if (!videoName) return null;
+        const sub = subtitleName && subtitleName.length ? subtitleName : 'none';
+        return `svp:marks:${videoName}::${sub}`;
+    }, [videoName, subtitleName]);
+    // Flag to avoid overwriting existing storage with empty arrays on first mount
+    const storageReadyRef = useRef(false);
+    const lastLoadedKeyRef = useRef<string | null>(null);
         // Remove a mark by time and type
         const removeMark = (time: number, type: 'start' | 'end') => {
             if (type === 'start') {
@@ -60,6 +71,90 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
     const [markedCues, setMarkedCues] = useState<number[]>([]);
     // Marked subtitle cue end times (in seconds)
     const [endMarks, setEndMarks] = useState<number[]>([]);
+
+    // Load marks from localStorage when video/subtitle pair changes
+    useEffect(() => {
+        if (!storageKey) return;
+        try {
+            const raw = typeof window !== 'undefined' ? localStorage.getItem(storageKey) : null;
+            if (raw) {
+                const parsed = JSON.parse(raw) as { markedCues?: number[]; endMarks?: number[] };
+                setMarkedCues(Array.isArray(parsed.markedCues) ? parsed.markedCues : []);
+                setEndMarks(Array.isArray(parsed.endMarks) ? parsed.endMarks : []);
+                lastLoadedKeyRef.current = storageKey;
+            } else {
+                // Fallback: if no exact pair found, try marks saved without subtitle ("none")
+                let loaded = false;
+                if (videoName) {
+                    const fallbackKey = `svp:marks:${videoName}::none`;
+                    const rawFallback = typeof window !== 'undefined' ? localStorage.getItem(fallbackKey) : null;
+                    if (rawFallback) {
+                        const parsed = JSON.parse(rawFallback) as { markedCues?: number[]; endMarks?: number[] };
+                        setMarkedCues(Array.isArray(parsed.markedCues) ? parsed.markedCues : []);
+                        setEndMarks(Array.isArray(parsed.endMarks) ? parsed.endMarks : []);
+                        loaded = true;
+                        lastLoadedKeyRef.current = fallbackKey;
+                    }
+                }
+                if (!loaded) {
+                    // Ensure we don't carry marks from previous pair
+                    setMarkedCues([]);
+                    setEndMarks([]);
+                    lastLoadedKeyRef.current = storageKey;
+                }
+            }
+        } catch (e) {
+            // On parse error, reset state but don't write immediately
+            setMarkedCues([]);
+            setEndMarks([]);
+            lastLoadedKeyRef.current = storageKey;
+        } finally {
+            // After attempting a load, allow future saves on next tick (ensure state applied)
+            storageReadyRef.current = false;
+            if (typeof window !== 'undefined') {
+                if (typeof window.requestAnimationFrame === 'function') {
+                    window.requestAnimationFrame(() => {
+                        storageReadyRef.current = true;
+                    });
+                } else {
+                    setTimeout(() => {
+                        storageReadyRef.current = true;
+                    }, 0);
+                }
+            } else {
+                storageReadyRef.current = true;
+            }
+        }
+    }, [storageKey, videoName]);
+
+    // Persist marks to localStorage when they change (after initial load attempt)
+    useEffect(() => {
+        if (!storageKey) return;
+        if (!storageReadyRef.current) return;
+        try {
+            if (typeof window !== 'undefined') {
+                // Guard: if both arrays are empty but existing storage has non-empty marks, don't overwrite
+                const existingRaw = localStorage.getItem(storageKey);
+                if (
+                    existingRaw &&
+                    Array.isArray(markedCues) && Array.isArray(endMarks) &&
+                    markedCues.length === 0 && endMarks.length === 0
+                ) {
+                    try {
+                        const existing = JSON.parse(existingRaw) as { markedCues?: any[]; endMarks?: any[] };
+                        const hasExisting = (existing.markedCues?.length || 0) > 0 || (existing.endMarks?.length || 0) > 0;
+                        if (hasExisting) {
+                            return; // skip overwriting with empty arrays
+                        }
+                    } catch {
+                        // ignore parse errors and proceed to write
+                    }
+                }
+                const payload = JSON.stringify({ markedCues, endMarks });
+                localStorage.setItem(storageKey, payload);
+            }
+        } catch {}
+    }, [markedCues, endMarks, storageKey]);
     // Track current time for instant UI updates
     const [currentTimeState, setCurrentTimeState] = useState(0);
     // Show clock animation during repeat wait
@@ -182,6 +277,24 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         }
     }, []);
 
+    // Ensure AudioContext is resumed on first user gesture (for Safari/Chrome policies)
+    useEffect(() => {
+        if (!amplifier) return;
+        const resume = () => {
+            if (amplifier.context.state === 'suspended') {
+                amplifier.context.resume().catch(() => {});
+            }
+        };
+        window.addEventListener('click', resume, { once: true });
+        window.addEventListener('keydown', resume, { once: true });
+        window.addEventListener('touchstart', resume, { once: true });
+        return () => {
+            window.removeEventListener('click', resume as any);
+            window.removeEventListener('keydown', resume as any);
+            window.removeEventListener('touchstart', resume as any);
+        };
+    }, [amplifier]);
+
     // volume control
     useEffect(() => {
         if (!amplifier) {
@@ -272,7 +385,7 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         };
 
         // Mark/unmark end of current subtitle with 'KeyE'
-        const markEndCue = (e: KeyboardEvent) => {
+    const markEndCue = (e: KeyboardEvent) => {
             if (e.code !== 'KeyE') return;
             e.preventDefault();
         // Mark at the current video time (not subtitle end), with ms precision
@@ -313,7 +426,8 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             }
             if (!closest) return;
             if (closest.type === 'regular') {
-        const EPSILON = 0.09; // 90ms
+    const EPSILON = 0.09; // 90ms
+        setMarkedCues(prev => prev.filter(t => Math.abs(t - closest!.time) >= EPSILON));
             } else {
                 setEndMarks(prev => prev.filter(t => t !== closest!.time));
             }

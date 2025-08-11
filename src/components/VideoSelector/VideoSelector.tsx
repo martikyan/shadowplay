@@ -28,7 +28,7 @@ function VideoSelector() {
         // Support both video and subtitle file selection
         let videoFile: File | null = null;
         let subtitleFile: File | null = null;
-        for (let i = 0; i < e.target.files.length; i++) {
+    for (let i = 0; i < e.target.files.length; i++) {
             const file = e.target.files[i];
             if (file.name.match(/\.(mp4|mkv|webm|mov)$/i)) {
                 videoFile = file;
@@ -44,7 +44,8 @@ function VideoSelector() {
 
         const videoName = videoFile.name;
         const videoObjectURL = URL.createObjectURL(videoFile);
-        let subtitleSrc = '';
+    let subtitleSrc = '';
+    let subtitleName: string | undefined = undefined;
 
         if (subtitleFile) {
             if (subtitleFile.name.endsWith('.srt')) {
@@ -57,11 +58,13 @@ function VideoSelector() {
                         const converted = mod.default(ev.target!.result as string);
                         const vttBlob = new Blob([converted], { type: 'text/vtt' });
                         subtitleSrc = URL.createObjectURL(vttBlob);
+                        subtitleName = subtitleFile!.name;
                         setSelectedVideo((prev) => ({
                             ...prev,
                             videoUrl: videoObjectURL,
                             videoName,
                             subtitleSrc,
+                            subtitleName,
                         }));
                         router.push('/screen');
                     });
@@ -71,6 +74,7 @@ function VideoSelector() {
             } else {
                 // vtt file
                 subtitleSrc = URL.createObjectURL(subtitleFile);
+                subtitleName = subtitleFile.name;
             }
         }
 
@@ -79,6 +83,7 @@ function VideoSelector() {
             videoUrl: videoObjectURL,
             videoName,
             subtitleSrc,
+            subtitleName,
         }));
         router.push('/screen');
     };

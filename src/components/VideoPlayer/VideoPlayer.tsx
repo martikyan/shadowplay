@@ -7,6 +7,7 @@ type VideoPlayerProps = {
     videoSrc: string;
     subtitleSrc: string;
     videoName: string;
+    subtitleName?: string;
 };
 
 function VideoPlayer(props: VideoPlayerProps) {
@@ -36,6 +37,8 @@ function VideoPlayer(props: VideoPlayerProps) {
             track.default = true;
             video.src = videoSrc;
             video.autoplay = true;
+            video.playsInline = true;
+            video.volume = Math.min(Math.max(video.volume ?? 1, 0), 1);
             video.appendChild(track);
         }
 
@@ -48,6 +51,33 @@ function VideoPlayer(props: VideoPlayerProps) {
                     videoContainer={videoContainer.current}
                 />
             );
+
+            // Try autoplay after the element is in the DOM
+            const tryAutoplay = async () => {
+                try {
+                    await video.play();
+                } catch (e) {
+                    // Autoplay with sound likely blocked; try muted autoplay
+                    const wasMuted = video.muted;
+                    try {
+                        video.muted = true;
+                        await video.play();
+                        // On first user gesture, unmute
+                        const unmute = () => {
+                            video.muted = wasMuted;
+                            window.removeEventListener('click', unmute);
+                            window.removeEventListener('keydown', unmute);
+                            window.removeEventListener('touchstart', unmute);
+                        };
+                        window.addEventListener('click', unmute);
+                        window.addEventListener('keydown', unmute);
+                        window.addEventListener('touchstart', unmute);
+                    } catch {
+                        // Give up; user interaction required
+                    }
+                }
+            };
+            void tryAutoplay();
         }
     }, [videoContainer, video, subtitleSrc]);
 

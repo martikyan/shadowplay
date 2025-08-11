@@ -29,6 +29,7 @@ function SubtitleSelector() {
                 return {
                     ...prev,
                     subtitleSrc: objectURL,
+                    subtitleName: file.name,
                 };
             });
             return;
@@ -46,6 +47,7 @@ function SubtitleSelector() {
                 return {
                     ...prev,
                     subtitleSrc: objectURL,
+                    subtitleName: file.name,
                 };
             });
         };
