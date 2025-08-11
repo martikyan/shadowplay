@@ -500,7 +500,7 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                 {showClock && (
                     <div style={{
                         position: 'absolute',
-                        top: -8,
+                        top: 72,
                         left: 24,
                         zIndex: 100,
                         pointerEvents: 'auto',
