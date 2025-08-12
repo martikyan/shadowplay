@@ -99,9 +99,6 @@ const VideoControls = (props: VideoControlsProps) => {
         video.addEventListener('play', () => {
             setPauseplayIcon(pauseIcon);
         });
-        video.addEventListener('click', () => {
-            playVideo();
-        });
         videoContainer.addEventListener('mousemove', () => {
             showControls();
             if (timeoutHandle) {
