@@ -46,6 +46,7 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
     useEffect(() => { passPulseDurationRef.current = passPulseDuration; }, [passPulseDuration]);
     const [longSkipSeconds, setLongSkipSeconds] = useState(10); // Arrow left/right skip
     const [shortSkipSeconds, setShortSkipSeconds] = useState(0.5); // U/O precise skip
+    const [infoOpen, setInfoOpen] = useState(false); // Instructions panel visibility
     // Pass mode: ignore end-mark auto-jumps for a short window or until manually toggled off
     const [passMode, setPassMode] = useState(false);
     // If true, pass mode is manually toggled and shouldn't auto-disable
@@ -806,9 +807,9 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                             borderRadius: 6,
                             border: '1px solid #888',
                             padding: '3px 10px',
-                            background: passMode ? 'linear-gradient(90deg, #2ecc71 0%, #6de39a 100%)' : '#222',
+                            background: '#222',
                             color: '#fff',
-                            boxShadow: passMode ? '0 1px 6px 0 rgba(0,255,128,0.20)' : 'none',
+                            boxShadow: 'none',
                             cursor: 'pointer',
                             width: 90,
                             textAlign: 'center',
@@ -828,11 +829,31 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                             padding: '3px 10px',
                             background: settingsOpen ? 'linear-gradient(90deg, #555 0%, #777 100%)' : '#222',
                             color: '#fff',
-                            cursor: 'pointer'
+                            cursor: 'pointer',
+                            width: 50,
+                            textAlign: 'center'
                         }}
-                        title="Open settings"
+                        title="Open settings (⚙️)"
                     >
                         ⚙️
+                    </button>
+                    <button
+                        onClick={() => setInfoOpen(o => !o)}
+                        style={{
+                            pointerEvents: 'auto',
+                            fontSize: 13,
+                            borderRadius: 6,
+                            border: '1px solid #888',
+                            padding: '3px 10px',
+                            background: infoOpen ? 'linear-gradient(90deg, #1f5ba8 0%, #3f84d6 100%)' : '#222',
+                            color: '#fff',
+                            cursor: 'pointer',
+                            width: 50,
+                            textAlign: 'center'
+                        }}
+                        title="Show instructions (i)"
+                    >
+                        i
                     </button>
                 </div>
                 {/* Settings Panel */}
@@ -876,6 +897,42 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                                 <input type="number" min={0} step={0.05} value={shortSkipSeconds} onChange={e => setShortSkipSeconds(Math.max(0, Number(e.target.value)))} style={{background:'#222', color:'#fff', border:'1px solid #555', borderRadius:4, padding:'4px 6px'}} />
                             </label>
                             <div style={{fontSize:11, opacity:0.7, lineHeight:1.4}}>Notes: Pass pulses auto-enable pass mode briefly after manual navigation. Manual toggle (P) overrides pulses.</div>
+                        </div>
+                    </div>
+                )}
+                {/* Info / Instructions Panel */}
+                {infoOpen && (
+                    <div style={{
+                        position: 'absolute',
+                        top: settingsOpen ? 200 : 16,
+                        left: 16,
+                        width: 340,
+                        maxHeight: 440,
+                        overflowY: 'auto',
+                        background: 'rgba(20,25,35,0.97)',
+                        borderRadius: 12,
+                        padding: '14px 18px 18px',
+                        boxShadow: '0 2px 16px 2px rgba(0,0,0,0.25)',
+                        color: '#fff',
+                        fontSize: 13,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                        pointerEvents: 'auto',
+                        zIndex: 29
+                    }}>
+                        <div style={{display:'flex', alignItems:'center'}}>
+                            <span style={{fontWeight:600, fontSize:15}}>Instructions</span>
+                            <button onClick={() => setInfoOpen(false)} style={{marginLeft:'auto', background:'transparent', border:'none', color:'#fff', fontSize:18, cursor:'pointer', lineHeight:1}}>×</button>
+                        </div>
+                        <div style={{lineHeight:1.5, display:'flex', flexDirection:'column', gap:8}}>
+                            <div><strong>Playback</strong><br/>Space / K: Play / Pause<br/>Arrow Left / Right: Skip {longSkipSeconds}s<br/>U / O: Precise skip {shortSkipSeconds}s back / forward<br/>Speed: Use Pace dropdown</div>
+                            <div><strong>Subtitle Navigation</strong><br/>J / L: Previous / Next subtitle cue<br/>W: Toggle start mark at current time<br/>E: Toggle end mark at current time<br/>Click start mark: Jump & play<br/>Double‑click mark: Edit time (HH:MM:SS.mmm)</div>
+                            <div><strong>Marks & Repeat</strong><br/>On reaching an end mark, playback rewinds to the previous start mark then auto-resumes after {autoResumeDelay} ms (unless Pass mode active).</div>
+                            <div><strong>Pass Mode</strong><br/>P: Toggle pass mode (ignore auto-jumps)<br/>Auto pulses (~{passPulseDuration} ms) after manual navigation prevent unwanted rewinds.</div>
+                            <div><strong>Volume</strong><br/>Arrow Up / Down: Volume & amplification (beyond 100% up to 4×)</div>
+                            <div><strong>Editing</strong><br/>× on a mark inside the panel removes it. Double‑click to edit mark time.</div>
+                            <div style={{fontSize:11, opacity:0.7}}>Tip: Adjust delays & skips in Settings (⚙️). Manual Pass (P) overrides pulses.</div>
                         </div>
                     </div>
                 )}
