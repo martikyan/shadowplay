@@ -1,6 +1,3 @@
-
-
-
 ## ShadowPlay: Intonation Improvement Video Player for Language Learning & Shadowing
 
 
@@ -8,6 +5,7 @@ ShadowPlay is a browser-based video player designed for language learners to pra
 
 Play your own videos locally in the browser, add subtitles (SRT or WebVTT), and use custom controls crafted for language learning and shadowing practice.
 
+https://martikyan.github.io/shadowplay/
 
 ### Features
 
