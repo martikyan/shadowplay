@@ -37,19 +37,28 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
     // Flag to avoid overwriting existing storage with empty arrays on first mount
     const storageReadyRef = useRef(false);
     const lastLoadedKeyRef = useRef<string | null>(null);
+    // Settings panel visibility
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    // Configurable playback durations (defaults reflect previous constants)
+    const [autoResumeDelay, setAutoResumeDelay] = useState(1000); // ms between pause at end mark and auto-resume
+    const [passPulseDuration, setPassPulseDuration] = useState(1000); // ms for temporary pass mode pulse
+    const passPulseDurationRef = useRef(passPulseDuration);
+    useEffect(() => { passPulseDurationRef.current = passPulseDuration; }, [passPulseDuration]);
+    const [longSkipSeconds, setLongSkipSeconds] = useState(10); // Arrow left/right skip
+    const [shortSkipSeconds, setShortSkipSeconds] = useState(0.5); // U/O precise skip
     // Pass mode: ignore end-mark auto-jumps for a short window or until manually toggled off
     const [passMode, setPassMode] = useState(false);
     // If true, pass mode is manually toggled and shouldn't auto-disable
     const passModeStickyRef = useRef(false);
     const passModeAutoTimerRef = useRef<NodeJS.Timeout | null>(null);
-    const pulsePassMode = (ms: number = 1000) => {
+    const pulsePassMode = () => {
         if (passModeStickyRef.current) return; // don't override manual ON
         setPassMode(true);
         if (passModeAutoTimerRef.current) clearTimeout(passModeAutoTimerRef.current);
         passModeAutoTimerRef.current = setTimeout(() => {
             if (!passModeStickyRef.current) setPassMode(false);
             passModeAutoTimerRef.current = null;
-        }, ms);
+        }, passPulseDurationRef.current);
     };
     const togglePassMode = () => {
         passModeStickyRef.current = !passModeStickyRef.current;
@@ -264,8 +273,8 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
     useEffect(() => {
         if (!video) return;
         let lastJumpedEnd: number | null = null;
-        const EPSILON = 0.5; // 500ms
-        const REPEAT_OFFSET = 0.05; // 50ms after mark
+    const EPSILON = 0.5; // 500ms
+    const REPEAT_OFFSET = 0.05; // 50ms after mark
         const onTimeUpdate = () => {
             const currentTime = video.currentTime;
             // In pass mode, ignore all auto-jumps
@@ -292,7 +301,7 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                     if (clockTimeoutRef.current) clearTimeout(clockTimeoutRef.current);
                     // Issue a new token for this auto-resume cycle
                     const myToken = ++autoResumeTokenRef.current;
-                    clockTimeoutRef.current = setTimeout(() => {
+            clockTimeoutRef.current = setTimeout(() => {
                         // Only auto-resume if this token is still current (i.e., not canceled by user interaction)
                         if (autoResumeTokenRef.current === myToken) {
                             setShowClock(false);
@@ -300,7 +309,7 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                         }
                         clockTimeoutRef.current = null;
                         inAutoPauseRef.current = false;
-                    }, 1000);
+            }, autoResumeDelay);
                 }
             }
             // Reset lastJumpedEnd if we move away
@@ -351,7 +360,7 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             window.removeEventListener('keydown', onKeyDown);
             if (clockTimeoutRef.current) clearTimeout(clockTimeoutRef.current);
         };
-    }, [video, markedCues, endMarks, passMode]);
+    }, [video, markedCues, endMarks, passMode, autoResumeDelay]);
     // Helper: get cues from the first text track (assumes subtitles are loaded)
     function getCues(): TextTrackCue[] {
         if (!video || !video.textTracks || video.textTracks.length === 0) return [];
@@ -536,9 +545,9 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             if (!video) return;
             const currentTime = video.currentTime;
             if (e.code === FORWARD_KEY) {
-                video.currentTime = Math.min(video.duration, currentTime + 10);
+                video.currentTime = Math.min(video.duration, currentTime + longSkipSeconds);
             } else if (e.code === BACKWARD_KEY) {
-                video.currentTime = Math.max(0, currentTime - 10);
+                video.currentTime = Math.max(0, currentTime - longSkipSeconds);
             }
             displayVideoTime();
             // User navigation should briefly bypass end marks
@@ -557,9 +566,9 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
             if (!video) return;
             const currentTime = video.currentTime;
             if (e.code === PRECISE_FORWARD) {
-                video.currentTime = Math.min(video.duration, currentTime + 0.5);
+                video.currentTime = Math.min(video.duration, currentTime + shortSkipSeconds);
             } else if (e.code === PRECISE_BACKWARD) {
-                video.currentTime = Math.max(0, currentTime - 0.5);
+                video.currentTime = Math.max(0, currentTime - shortSkipSeconds);
             }
             displayVideoTime();
             // User navigation should briefly bypass end marks
@@ -747,8 +756,25 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                     </div>
                 )}
                 {/* Time and playback rate display */}
-                <div style={{ color: '#fff', fontSize: 14, marginTop: 2, textAlign: 'center', textShadow: '0 1px 2px #000', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 16 }}>
-                    <span>{secondsToTime(currentTime)} / {secondsToTime(duration)}</span>
+                <div style={{
+                    color: '#fff',
+                    fontSize: 14,
+                    marginTop: 2,
+                    textAlign: 'center',
+                    textShadow: '0 1px 2px #000',
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: 16,
+                }}>
+                    <span style={{
+                        fontFamily: 'monospace',
+                        minWidth: 220,
+                        display: 'inline-block',
+                        textAlign: 'right',
+                        letterSpacing: '0.5px',
+                        userSelect: 'text',
+                    }}>{secondsToTime(currentTime)} / {secondsToTime(duration)}</span>
                     <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                         <span style={{ fontWeight: 500 }}>Pace:</span>
                         <select
@@ -783,13 +809,76 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                             background: passMode ? 'linear-gradient(90deg, #2ecc71 0%, #6de39a 100%)' : '#222',
                             color: '#fff',
                             boxShadow: passMode ? '0 1px 6px 0 rgba(0,255,128,0.20)' : 'none',
-                            cursor: 'pointer'
+                            cursor: 'pointer',
+                            width: 90,
+                            textAlign: 'center',
+                            fontVariantNumeric: 'tabular-nums',
                         }}
                         title="Toggle pass mode (P). When ON, marks are ignored for auto-jumps."
                     >
                         {passMode ? 'Pass: ON' : 'Pass: OFF'}
                     </button>
+                    <button
+                        onClick={() => setSettingsOpen(o => !o)}
+                        style={{
+                            pointerEvents: 'auto',
+                            fontSize: 13,
+                            borderRadius: 6,
+                            border: '1px solid #888',
+                            padding: '3px 10px',
+                            background: settingsOpen ? 'linear-gradient(90deg, #555 0%, #777 100%)' : '#222',
+                            color: '#fff',
+                            cursor: 'pointer'
+                        }}
+                        title="Open settings"
+                    >
+                        ⚙️
+                    </button>
                 </div>
+                {/* Settings Panel */}
+                {settingsOpen && (
+                    <div style={{
+                        position: 'absolute',
+                        top: 16,
+                        left: 16,
+                        width: 300,
+                        background: 'rgba(25,25,30,0.97)',
+                        borderRadius: 12,
+                        padding: '14px 18px 18px',
+                        boxShadow: '0 2px 16px 2px rgba(0,0,0,0.25)',
+                        color: '#fff',
+                        fontSize: 13,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: 10,
+                        pointerEvents: 'auto',
+                        zIndex: 30
+                    }}>
+                        <div style={{display:'flex', alignItems:'center'}}>
+                            <span style={{fontWeight:600, fontSize:15}}>Settings</span>
+                            <button onClick={() => setSettingsOpen(false)} style={{marginLeft:'auto', background:'transparent', border:'none', color:'#fff', fontSize:18, cursor:'pointer', lineHeight:1}}>×</button>
+                        </div>
+                        <div style={{display:'flex', flexDirection:'column', gap:6}}>
+                            <label style={{display:'flex', flexDirection:'column', gap:2}}>
+                                <span>Auto resume delay (ms)</span>
+                                <input type="number" min={0} value={autoResumeDelay} onChange={e => setAutoResumeDelay(Math.max(0, Number(e.target.value)))} style={{background:'#222', color:'#fff', border:'1px solid #555', borderRadius:4, padding:'4px 6px'}} />
+                            </label>
+                            <label style={{display:'flex', flexDirection:'column', gap:2}}>
+                                <span>Pass mode pulse (ms)</span>
+                                <input type="number" min={0} value={passPulseDuration} onChange={e => setPassPulseDuration(Math.max(100, Number(e.target.value)))} style={{background:'#222', color:'#fff', border:'1px solid #555', borderRadius:4, padding:'4px 6px'}} />
+                            </label>
+                            <label style={{display:'flex', flexDirection:'column', gap:2}}>
+                                <span>Long skip (s) (←/→)</span>
+                                <input type="number" min={0} step={0.1} value={longSkipSeconds} onChange={e => setLongSkipSeconds(Math.max(0, Number(e.target.value)))} style={{background:'#222', color:'#fff', border:'1px solid #555', borderRadius:4, padding:'4px 6px'}} />
+                            </label>
+                            <label style={{display:'flex', flexDirection:'column', gap:2}}>
+                                <span>Short skip (s) (U/O)</span>
+                                <input type="number" min={0} step={0.05} value={shortSkipSeconds} onChange={e => setShortSkipSeconds(Math.max(0, Number(e.target.value)))} style={{background:'#222', color:'#fff', border:'1px solid #555', borderRadius:4, padding:'4px 6px'}} />
+                            </label>
+                            <div style={{fontSize:11, opacity:0.7, lineHeight:1.4}}>Notes: Pass pulses auto-enable pass mode briefly after manual navigation. Manual toggle (P) overrides pulses.</div>
+                        </div>
+                    </div>
+                )}
                 {/* Subtitle display */}
                 <div style={{ color: '#fff', fontSize: 18, marginTop: 8, textAlign: 'center', textShadow: '0 2px 4px #000', fontWeight: 'bold' }}>
                     {subtitleBlocks.map((text, idx) => (
