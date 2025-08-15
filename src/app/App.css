@@ -80,6 +80,7 @@
 .App-Feature-Notes {
     margin: 0 auto;
     margin-top: 50px;
+    margin-right: 10px;
     text-align: left;
     max-width: 660px;
 }
