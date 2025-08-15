@@ -194,6 +194,83 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
     const [markedCues, setMarkedCues] = useState<number[]>([]);
     // Marked subtitle cue end times (in seconds)
     const [endMarks, setEndMarks] = useState<number[]>([]);
+    // Track last added mark for highlight/scroll
+    const [lastAddedMark, setLastAddedMark] = useState<{time: number, type: 'start' | 'end'} | null>(null);
+    // Highlighted mark: either last added or currently reached
+    const [highlightedMark, setHighlightedMark] = useState<{time: number, type: 'start' | 'end'} | null>(null);
+    const markRefs = useRef<{[key: string]: HTMLDivElement | null}>({});
+    // Track current mark (video time matches a mark)
+    const [currentMark, setCurrentMark] = useState<{time: number, type: 'start' | 'end'} | null>(null);
+    // Detect when video time matches a mark and highlight/scroll
+    useEffect(() => {
+        if (!video) return;
+        const EPS = 0.25; // seconds tolerance for matching
+        const onTimeUpdate = () => {
+            const t = video.currentTime;
+            // Find closest mark within EPS
+            let found: {time: number, type: 'start' | 'end'} | null = null;
+            for (const time of markedCues) {
+                if (Math.abs(time - t) < EPS) {
+                    found = {time, type: 'start'};
+                    break;
+                }
+            }
+            if (!found) {
+                for (const time of endMarks) {
+                    if (Math.abs(time - t) < EPS) {
+                        found = {time, type: 'end'};
+                        break;
+                    }
+                }
+            }
+            setCurrentMark(found);
+        };
+        video.addEventListener('timeupdate', onTimeUpdate);
+        return () => video.removeEventListener('timeupdate', onTimeUpdate);
+    }, [video, markedCues, endMarks]);
+
+    // Highlight and autoscroll to current mark
+    useEffect(() => {
+        if (!currentMark) return;
+        setHighlightedMark(currentMark);
+        const key = currentMark.type + '-' + currentMark.time;
+        setTimeout(() => {
+            // Only clear highlight if not lastAddedMark
+            if (!lastAddedMark || lastAddedMark.time !== currentMark.time || lastAddedMark.type !== currentMark.type) {
+                setHighlightedMark(null);
+            }
+        }, 1000);
+        setTimeout(() => {
+            const el = markRefs.current[key];
+            if (el && el.scrollIntoView) {
+                el.scrollIntoView({behavior: 'smooth', block: 'center'});
+            }
+        }, 100);
+    }, [currentMark]);
+
+    // Scroll and highlight newly added mark (must be top-level, not nested)
+    useEffect(() => {
+        if (!lastAddedMark) return;
+        const key = lastAddedMark.type + '-' + lastAddedMark.time;
+        setHighlightedMark(lastAddedMark);
+        const clearHighlight = setTimeout(() => {
+            if (!currentMark || currentMark.time !== lastAddedMark.time || currentMark.type !== lastAddedMark.type) {
+                setHighlightedMark(null);
+            }
+        }, 1000);
+        const clearLastAdded = setTimeout(() => setLastAddedMark(null), 1200);
+        const scrollTimeout = setTimeout(() => {
+            const el = markRefs.current[key];
+            if (el && el.scrollIntoView) {
+                el.scrollIntoView({behavior: 'smooth', block: 'center'});
+            }
+        }, 100);
+        return () => {
+            clearTimeout(clearHighlight);
+            clearTimeout(clearLastAdded);
+            clearTimeout(scrollTimeout);
+        };
+    }, [lastAddedMark, currentMark]);
 
     // Load marks from localStorage when video/subtitle pair changes
     useEffect(() => {
@@ -559,28 +636,31 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                     // Unmark if already marked (within EPS)
                     return prev.filter((t: number) => Math.abs(t - currentTime) >= EPS);
                 } else {
+                    setLastAddedMark({time: currentTime, type: 'start'});
                     return [...prev, currentTime].sort((a, b) => a - b);
                 }
             });
         };
 
         // Mark/unmark end of current subtitle with 'KeyE'
-    const markEndCue = (e: KeyboardEvent) => {
+        const markEndCue = (e: KeyboardEvent) => {
             if (e.code !== 'KeyE') return;
             e.preventDefault();
-        // Mark at the current video time (not subtitle end), with ms precision
-        const currentTime = Number(video.currentTime.toFixed(3));
-        setEndMarks((prev: number[]) => {
-            // Use a small epsilon to check for near-duplicates
-            const EPS = 0.0005;
-            if (prev.some(t => Math.abs(t - currentTime) < EPS)) {
-                // Unmark if already marked (within EPS)
-                return prev.filter((t: number) => Math.abs(t - currentTime) >= EPS);
-            } else {
-                return [...prev, currentTime].sort((a, b) => a - b);
-            }
-        });
+            // Mark at the current video time (not subtitle end), with ms precision
+            const currentTime = Number(video.currentTime.toFixed(3));
+            setEndMarks((prev: number[]) => {
+                // Use a small epsilon to check for near-duplicates
+                const EPS = 0.0005;
+                if (prev.some(t => Math.abs(t - currentTime) < EPS)) {
+                    // Unmark if already marked (within EPS)
+                    return prev.filter((t: number) => Math.abs(t - currentTime) >= EPS);
+                } else {
+                    setLastAddedMark({time: currentTime, type: 'end'});
+                    return [...prev, currentTime].sort((a, b) => a - b);
+                }
+            });
         };
+    // (Removed misplaced nested useEffect for lastAddedMark – now handled at top level)
 
 
         // ArrowRight/ArrowLeft: always jump 10 seconds forward/backward
@@ -1093,9 +1173,13 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                     )}
                     {allMarks.map((mark, idx) => {
                         const isEditing = editingMark && editingMark.time === mark.time && editingMark.type === mark.type;
+                        const key = mark.type + '-' + mark.time;
+                        // Only highlight start marks, not end marks
+                        const isHighlighted = highlightedMark && highlightedMark.time === mark.time && highlightedMark.type === 'start' && mark.type === 'start';
                         return (
                             <div
-                                key={'panel-' + mark.type + '-' + mark.time}
+                                key={'panel-' + key}
+                                ref={el => { markRefs.current[key] = el; }}
                                 onClick={mark.type === 'start' && !isEditing ? () => goToMark(mark.time) : undefined}
                                 onDoubleClick={() => setEditingMark({ time: mark.time, type: mark.type, value: secondsToTime(mark.time) })}
                                 style={{
@@ -1110,13 +1194,15 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                                     fontWeight: mark.type === 'start' ? 600 : 500,
                                     fontSize: 15,
                                     boxShadow: mark.type === 'start'
-                                        ? '0 1px 6px 0 rgba(255,0,0,0.15)'
+                                        ? (isHighlighted
+                                            ? '0 0 0 7px #ffb6d5cc, 0 1px 6px 0 rgba(255,0,0,0.18)'
+                                            : '0 1px 6px 0 rgba(255,0,0,0.15)')
                                         : '0 1px 6px 0 rgba(0,0,255,0.10)',
                                     border: mark.time === currentTime ? '2px solid #fff' : '2px solid transparent',
                                     outline: mark.time === currentTime
                                         ? (mark.type === 'start' ? '2px solid #ff4d4d' : '2px solid #4d6dff')
                                         : 'none',
-                                    transition: 'border 0.2s, outline 0.2s',
+                                    transition: 'border 0.2s, outline 0.2s, background 0.3s, box-shadow 0.3s',
                                     pointerEvents: 'auto',
                                     userSelect: mark.type === 'start' ? 'auto' : 'none',
                                     display: 'flex',
