@@ -1185,36 +1185,40 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                                 style={{
                                     cursor: mark.type === 'start' ? 'pointer' : 'default',
                                     background: mark.type === 'start'
-                                        ? 'linear-gradient(90deg, #ff4d4d 0%, #ffb3b3 100%)'
-                                        : 'linear-gradient(90deg, #4d6dff 0%, #b3c6ff 100%)',
+                                        ? 'linear-gradient(90deg, #a82c3a 0%, #ff4d6d 100%)'
+                                        : 'linear-gradient(90deg, #6a6a6a 0%, #b0b0b0 100%)',
                                     color: '#fff',
-                                    borderRadius: 6,
-                                    padding: '6px 10px',
+                                    borderRadius: mark.type === 'start' ? 6 : 4,
+                                    padding: mark.type === 'start' ? '6px 10px' : '4px 6px',
+                                    minHeight: mark.type === 'end' ? 14 : undefined,
+                                    height: mark.type === 'end' ? 14 : 'auto',
                                     marginBottom: 2,
                                     fontWeight: mark.type === 'start' ? 600 : 500,
                                     fontSize: 15,
                                     boxShadow: mark.type === 'start'
                                         ? (isHighlighted
-                                            ? '0 0 0 7px #ffb6d5cc, 0 1px 6px 0 rgba(255,0,0,0.18)'
-                                            : '0 1px 6px 0 rgba(255,0,0,0.15)')
-                                        : '0 1px 6px 0 rgba(0,0,255,0.10)',
+                                            ? '0 0 0 7px #a82c3acc, 0 1px 6px 0 rgba(168,44,58,0.18)'
+                                            : '0 1px 6px 0 rgba(168,44,58,0.15)')
+                                        : '0 0 0 2px #6a6a6a, 0 1px 3px 0 rgba(80,80,80,0.25)',
                                     border: mark.time === currentTime ? '2px solid #fff' : '2px solid transparent',
                                     outline: mark.time === currentTime
                                         ? (mark.type === 'start' ? '2px solid #ff4d4d' : '2px solid #4d6dff')
                                         : 'none',
-                                    transition: 'border 0.2s, outline 0.2s, background 0.3s, box-shadow 0.3s',
+                                    transition: 'border 0.2s, outline 0.2s, background 0.3s, box-shadow 0.3s, transform .2s',
                                     pointerEvents: 'auto',
                                     userSelect: mark.type === 'start' ? 'auto' : 'none',
-                                    display: 'flex',
                                     gap: 8,
                                     position: 'relative',
-                                    flexDirection: 'column',
-                                    alignItems: 'flex-start',
+                                    flexDirection: mark.type === 'start' ? 'column' : 'row',
+                                    alignItems: mark.type === 'start' ? 'flex-start' : 'center',
+                                    opacity: mark.type === 'end' ? 0.9 : 1,
                                 }}
                                 title={mark.type === 'start' ? `Go to ${secondsToTime(mark.time)}` : `End mark at ${secondsToTime(mark.time)}`}
                             >
-                                <div style={{ display: 'flex', alignItems: 'center', width: '100%' }}>
-                                    <span style={{ fontWeight: 700, fontSize: 17 }}>{mark.type === 'start' ? '●' : '■'}</span>
+                                <div style={{ display: 'flex', alignItems: 'center', width: '100%', gap: 6 }}>
+                                    <span style={{ fontWeight: 700, fontSize: mark.type === 'start' ? 17 : 12, lineHeight: 1, color: mark.type === 'end' ? '#888' : undefined }}>
+                                        {mark.type === 'start' ? '●' : '▮'}
+                                    </span>
                                     {isEditing ? (
                                         <input
                                             type="text"
@@ -1257,7 +1261,7 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                                     </button>
                                 </div>
                                 {/* Show subtitle text in panel for start marks */}
-                                {mark.type === 'start' && mark.subtitle && (
+                                    {mark.type === 'start' && mark.subtitle && (
                                     <div style={{
                                         marginTop: 2,
                                         fontSize: 13,
