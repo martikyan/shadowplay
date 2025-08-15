@@ -46,6 +46,10 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
     useEffect(() => { passPulseDurationRef.current = passPulseDuration; }, [passPulseDuration]);
     const [longSkipSeconds, setLongSkipSeconds] = useState(10); // Arrow left/right skip
     const [shortSkipSeconds, setShortSkipSeconds] = useState(0.5); // U/O precise skip
+    // Threshold: when pressing J, if further than this many seconds into current cue, first press snaps to cue start; else jumps to previous cue.
+    const [backRestartThreshold, setBackRestartThreshold] = useState(0.6); // seconds
+    const backRestartThresholdRef = useRef(backRestartThreshold);
+    useEffect(() => { backRestartThresholdRef.current = backRestartThreshold; }, [backRestartThreshold]);
     const [infoOpen, setInfoOpen] = useState(false); // Instructions panel visibility
     // Pass mode: ignore end-mark auto-jumps for a short window or until manually toggled off
     const [passMode, setPassMode] = useState(false);
@@ -83,26 +87,90 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
 
     // J/L: jump backward/forward by one subtitle cue
     function jumpBySubtitle(e: KeyboardEvent) {
-        if (isTextInputFocused()) return;
-        if (!video) return;
-        const cues = getCues();
+            if (e.code !== 'KeyJ' && e.code !== 'KeyL') return; // only log for J/L
+            if (isTextInputFocused()) { console.log('[JL] abort: input focused'); return; }
+            if (!video) { console.log('[JL] abort: no video element'); return; }
+            const cues = getCues();
+            if (!cues.length) { console.log('[JL] abort: no cues loaded'); return; }
         const currentTime = video.currentTime;
-        let currentCueIdx = cues.findIndex(
-            cue => cue.startTime <= currentTime && currentTime < cue.endTime
-        );
-        if (e.code === 'KeyJ') {
-            // Jump to previous cue
-            if (currentCueIdx > 0) {
-                video.currentTime = cues[currentCueIdx - 1].startTime;
-                // Pulse pass mode to avoid immediate auto-jump at nearby end marks
-                pulsePassMode();
+        const POS_EPS = 0.0005; // positioning epsilon (~0.5ms)
+        // Find cue containing time OR treat zero-length cues as having tiny length
+        let currentCueIdx = cues.findIndex(cue => {
+            const effectiveEnd = cue.endTime > cue.startTime ? cue.endTime : cue.startTime + POS_EPS;
+            return cue.startTime - POS_EPS <= currentTime && currentTime < effectiveEnd + POS_EPS;
+        });
+        console.log('[JL] key', e.code, 'time', currentTime.toFixed(3), 'cues', cues.length, 'currentCueIdx', currentCueIdx);
+        if (e.code === 'KeyL') {
+            // Forward: prefer first cue strictly after current position (beyond epsilon)
+            let targetIdx = cues.findIndex(c => c.startTime > currentTime + POS_EPS);
+            if (targetIdx === -1) {
+                // If none strictly after, maybe we are before a cue start within epsilon: advance to next after that cue
+                const atIdx = cues.findIndex(c => Math.abs(c.startTime - currentTime) <= POS_EPS);
+                if (atIdx !== -1 && atIdx + 1 < cues.length) targetIdx = atIdx + 1;
             }
-        } else if (e.code === 'KeyL') {
-            // Jump to next cue
-            if (currentCueIdx !== -1 && currentCueIdx < cues.length - 1) {
-                video.currentTime = cues[currentCueIdx + 1].startTime;
-                // Pulse pass mode to avoid immediate auto-jump at nearby end marks
+            // If still none and we're inside a cue, move to its next
+            if (targetIdx === -1 && currentCueIdx !== -1 && currentCueIdx + 1 < cues.length) {
+                targetIdx = currentCueIdx + 1;
+            }
+            if (targetIdx !== -1) {
+                const target = cues[targetIdx].startTime;
+                if (Math.abs(target - currentTime) < POS_EPS) {
+                    // Avoid being stuck — try one more ahead if possible
+                    if (targetIdx + 1 < cues.length) {
+                        console.log('[JL] forward stuck at same start, skipping ahead one more');
+                        video.currentTime = cues[targetIdx + 1].startTime;
+                    } else {
+                        console.log('[JL] at last cue start, cannot advance further');
+                    }
+                } else {
+                    console.log('[JL] jumping forward to cue', targetIdx, 'start', target);
+                    video.currentTime = target;
+                }
                 pulsePassMode();
+            } else {
+                console.log('[JL] no forward cue found');
+            }
+            return;
+        }
+        if (e.code === 'KeyJ') {
+            // Backward two-phase behavior similar to many players:
+            // 1) If inside a cue and more than BACK_RESTART_THRESHOLD past its start -> go to its start.
+            // 2) Else go to previous cue start (if any).
+            const BACK_RESTART_THRESHOLD = backRestartThresholdRef.current; // seconds past start before first press snaps to start
+            if (currentCueIdx !== -1) {
+                const cueStart = cues[currentCueIdx].startTime;
+                const deltaFromStart = currentTime - cueStart;
+                if (deltaFromStart > BACK_RESTART_THRESHOLD) {
+                    console.log('[JL] backward: inside cue', currentCueIdx, 'delta', deltaFromStart.toFixed(3), '-> snap to its start', cueStart);
+                    video.currentTime = cueStart;
+                    pulsePassMode();
+                    return;
+                } else {
+                    // Near start: go to previous cue if exists
+                    if (currentCueIdx > 0) {
+                        const prevStart = cues[currentCueIdx - 1].startTime;
+                        console.log('[JL] backward: near start of cue', currentCueIdx, '-> previous cue', currentCueIdx - 1, prevStart);
+                        video.currentTime = prevStart;
+                        pulsePassMode();
+                        return;
+                    } else {
+                        console.log('[JL] backward: at very first cue start, cannot go earlier');
+                        video.currentTime = cueStart; // ensure alignment
+                        return;
+                    }
+                }
+            }
+            // Gap case (no current cue): go to last cue with start < currentTime
+            let gapIdx = -1;
+            for (let i = cues.length - 1; i >= 0; i--) {
+                if (cues[i].startTime < currentTime - POS_EPS) { gapIdx = i; break; }
+            }
+            if (gapIdx !== -1) {
+                console.log('[JL] backward gap: jumping to cue', gapIdx, 'start', cues[gapIdx].startTime);
+                video.currentTime = cues[gapIdx].startTime;
+                pulsePassMode();
+            } else {
+                console.log('[JL] backward gap: nothing before current time');
             }
         }
     }
@@ -240,26 +308,6 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
     // Keep currentTimeState in sync with video.currentTime
     useEffect(() => {
         // J/L: jump backward/forward by one subtitle cue
-        const jumpBySubtitle = (e: KeyboardEvent) => {
-            if (isTextInputFocused()) return;
-            if (!video) return;
-            const cues = getCues();
-            const currentTime = video.currentTime;
-            let currentCueIdx = cues.findIndex(
-                cue => cue.startTime <= currentTime && currentTime < cue.endTime
-            );
-            if (e.code === 'KeyJ') {
-                // Jump to previous cue
-                if (currentCueIdx > 0) {
-                    video.currentTime = cues[currentCueIdx - 1].startTime;
-                }
-            } else if (e.code === 'KeyL') {
-                // Jump to next cue
-                if (currentCueIdx !== -1 && currentCueIdx < cues.length - 1) {
-                    video.currentTime = cues[currentCueIdx + 1].startTime;
-                }
-            }
-        };
         if (!video) return;
         const updateCurrentTime = () => setCurrentTimeState(video.currentTime);
         video.addEventListener('timeupdate', updateCurrentTime);
@@ -895,6 +943,10 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                             <label style={{display:'flex', flexDirection:'column', gap:2}}>
                                 <span>Short skip (s) (U/O)</span>
                                 <input type="number" min={0} step={0.05} value={shortSkipSeconds} onChange={e => setShortSkipSeconds(Math.max(0, Number(e.target.value)))} style={{background:'#222', color:'#fff', border:'1px solid #555', borderRadius:4, padding:'4px 6px'}} />
+                            </label>
+                            <label style={{display:'flex', flexDirection:'column', gap:2}}>
+                                <span>Back snap threshold (s) (J)</span>
+                                <input type="number" min={0} step={0.05} value={backRestartThreshold} onChange={e => setBackRestartThreshold(Math.max(0, Number(e.target.value)))} style={{background:'#222', color:'#fff', border:'1px solid #555', borderRadius:4, padding:'4px 6px'}} />
                             </label>
                             <div style={{fontSize:11, opacity:0.7, lineHeight:1.4}}>Notes: Pass pulses auto-enable pass mode briefly after manual navigation. Manual toggle (P) overrides pulses.</div>
                         </div>
