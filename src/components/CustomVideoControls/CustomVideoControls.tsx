@@ -229,7 +229,7 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
         return () => video.removeEventListener('timeupdate', onTimeUpdate);
     }, [video, markedCues, endMarks]);
 
-    // Highlight and autoscroll to current mark
+    // Highlight and autoscroll to current start mark
     useEffect(() => {
         if (!currentMark) return;
         setHighlightedMark(currentMark);
@@ -240,12 +240,14 @@ function CustomVideoControls(props: CustomVideoControlsProps) {
                 setHighlightedMark(null);
             }
         }, 1000);
-        setTimeout(() => {
-            const el = markRefs.current[key];
-            if (el && el.scrollIntoView) {
-                el.scrollIntoView({behavior: 'smooth', block: 'center'});
-            }
-        }, 100);
+        if (currentMark.type === 'start') {
+            setTimeout(() => {
+                const el = markRefs.current[key];
+                if (el && el.scrollIntoView) {
+                    el.scrollIntoView({behavior: 'smooth', block: 'center'});
+                }
+            }, 100);
+        }
     }, [currentMark]);
 
     // Scroll and highlight newly added mark (must be top-level, not nested)
